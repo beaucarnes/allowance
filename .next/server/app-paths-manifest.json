@@ -1,0 +1,9 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/parent/kid/[slug]/settings/page": "app/parent/kid/[slug]/settings/page.js",
+  "/parent/kid/[slug]/page": "app/parent/kid/[slug]/page.js",
+  "/parent/page": "app/parent/page.js",
+  "/kids/page": "app/kids/page.js",
+  "/api/auth/session/route": "app/api/auth/session/route.js",
+  "/kids/[slug]/page": "app/kids/[slug]/page.js"
+}
