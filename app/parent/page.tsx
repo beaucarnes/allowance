@@ -90,7 +90,8 @@ export default function ParentDashboard() {
       
       console.log('Final kids count:', uniqueKids.length);
       setKids(uniqueKids);
-    } catch (error) {
+    } catch (err) {
+      const error = err as { code?: string; message?: string };
       console.error('Error fetching kids:', error);
       console.log('Error details:', {
         code: error.code,

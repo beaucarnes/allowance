@@ -3,7 +3,9 @@ compatibility_date = "2023-01-01"
 
 [build]
 command = "npm run build"
-output_directory = "dist"
+
+[pages]
+build_output_directory = ".next/standalone"
 
 [env.production]
 NODE_ENV = "production"
