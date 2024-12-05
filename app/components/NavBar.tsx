@@ -22,8 +22,17 @@ export default function NavBar() {
 
   const handleSignOut = async () => {
     try {
+      // First sign out from Firebase
       await signOut(auth)
-      router.push('/')
+      
+      // Then clear the session cookie
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      })
+      
+      // Force a hard refresh to clear all state
+      window.location.href = '/'
     } catch (error) {
       console.error('Error signing out:', error)
     }

@@ -7,6 +7,17 @@ import Link from 'next/link'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
+// Add cache control headers
+export async function generateMetadata() {
+  return {
+    headers: {
+      'Cache-Control': 'no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    },
+  }
+}
+
 interface KidData {
   id: string;
   name: string;
@@ -62,7 +73,7 @@ async function getUserKids(userId: string, email: string): Promise<KidData[]> {
 export default async function KidsPage() {
   const user = await verifySession()
   if (!user) {
-    redirect('/parent')
+    redirect('/parent')  // Redirect to login if not authenticated
   }
 
   const kids = await getUserKids(user.uid, user.email)
