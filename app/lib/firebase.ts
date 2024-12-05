@@ -16,9 +16,9 @@ console.log('Initializing Firebase with config:', {
   apiKey: firebaseConfig.apiKey?.substring(0, 5) + '...'
 });
 
-const app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-export { app, auth, db };
+export { auth, db };
 
