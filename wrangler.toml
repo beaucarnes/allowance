@@ -1,0 +1,13 @@
+name = "allowance-tracker"
+compatibility_date = "2023-01-01"
+
+[build]
+command = "npm run build"
+output_directory = "dist"
+
+[env.production]
+NODE_ENV = "production"
+
+[[kv_namespaces]]
+binding = "SESSION_STORE"
+id = "your_kv_namespace_id" 
