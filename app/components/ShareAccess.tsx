@@ -11,83 +11,83 @@ interface ShareAccessProps {
 
 export default function ShareAccess({ kidId, sharedWith }: ShareAccessProps) {
   const [email, setEmail] = useState('')
-  const [isSharing, setIsSharing] = useState(false)
-  const [isRevoking, setIsRevoking] = useState<string | null>(null)
+  const [sharedEmails, setSharedEmails] = useState<string[]>(sharedWith)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleShare = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email) return
 
-    setIsSharing(true)
+    setIsSubmitting(true)
     try {
-      const kidRef = doc(db, 'kids', kidId)
-      await updateDoc(kidRef, {
-        sharedWith: arrayUnion(email)
+      await updateDoc(doc(db, 'kids', kidId), {
+        sharedWith: arrayUnion(email.toLowerCase())
       })
+      setSharedEmails(prev => [...prev, email.toLowerCase()])
       setEmail('')
     } catch (error) {
       console.error('Error sharing access:', error)
       alert('Failed to share access. Please try again.')
     } finally {
-      setIsSharing(false)
+      setIsSubmitting(false)
     }
   }
 
-  const handleRevoke = async (emailToRevoke: string) => {
-    if (!confirm(`Are you sure you want to revoke access for ${emailToRevoke}?`)) return
-
-    setIsRevoking(emailToRevoke)
+  const handleRemove = async (emailToRemove: string) => {
     try {
-      const kidRef = doc(db, 'kids', kidId)
-      await updateDoc(kidRef, {
-        sharedWith: arrayRemove(emailToRevoke)
+      await updateDoc(doc(db, 'kids', kidId), {
+        sharedWith: arrayRemove(emailToRemove)
       })
+      setSharedEmails(prev => prev.filter(e => e !== emailToRemove))
     } catch (error) {
-      console.error('Error revoking access:', error)
-      alert('Failed to revoke access. Please try again.')
-    } finally {
-      setIsRevoking(null)
+      console.error('Error removing access:', error)
+      alert('Failed to remove access. Please try again.')
     }
   }
 
   return (
     <div>
       <h2 className="text-xl font-bold mb-4">Share Access</h2>
-      <form onSubmit={handleShare} className="flex gap-4">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Enter parent's email"
-          className="flex-1 border rounded-md p-2"
-          required
-        />
-        <button
-          type="submit"
-          disabled={isSharing}
-          className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded disabled:opacity-50"
-        >
-          Share
-        </button>
+      
+      <form onSubmit={handleShare} className="mb-6">
+        <div className="flex gap-2">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Enter email address"
+            className="flex-1 border rounded-md p-2"
+            required
+          />
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+          >
+            {isSubmitting ? 'Sharing...' : 'Share'}
+          </button>
+        </div>
       </form>
-      {sharedWith.length > 0 && (
-        <div className="mt-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Shared with:</h3>
+
+      {sharedEmails.length > 0 ? (
+        <div>
+          <h3 className="font-semibold mb-2">Shared with:</h3>
           <ul className="space-y-2">
-            {sharedWith.map((email) => (
-              <li key={email} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded">
-                <span className="text-gray-600">{email}</span>
+            {sharedEmails.map((sharedEmail) => (
+              <li key={sharedEmail} className="flex justify-between items-center bg-gray-50 p-2 rounded">
+                <span>{sharedEmail}</span>
                 <button
-                  onClick={() => handleRevoke(email)}
-                  disabled={isRevoking === email}
-                  className="text-red-500 hover:text-red-700 text-sm font-medium disabled:opacity-50"
+                  onClick={() => handleRemove(sharedEmail)}
+                  className="text-red-600 hover:text-red-700"
                 >
-                  {isRevoking === email ? 'Revoking...' : 'Revoke Access'}
+                  Remove
                 </button>
               </li>
             ))}
           </ul>
         </div>
+      ) : (
+        <p className="text-gray-500">Not shared with anyone yet</p>
       )}
     </div>
   )

@@ -6,6 +6,7 @@ import KidSettings from '@/app/components/KidSettings'
 import ShareAccess from '@/app/components/ShareAccess'
 import DashboardVisibility from '@/app/components/DashboardVisibility'
 import AccountDetails from '@/app/components/AccountDetails'
+import DeleteKid from '@/app/components/DeleteKid'
 
 type KidData = {
   id: string;
@@ -64,6 +65,13 @@ export default function SettingsPage({ kid }: { kid: KidData }) {
             kidId={kid.id}
             initialName={kid.name}
             initialSlug={kid.slug}
+          />
+        </section>
+
+        <section className="bg-white p-6 rounded-lg shadow">
+          <DeleteKid 
+            kidId={kid.id}
+            kidName={kid.name}
           />
         </section>
       </div>
