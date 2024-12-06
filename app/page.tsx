@@ -6,7 +6,7 @@ export default function Home() {
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold mb-4">Kid's Allowance Tracker</h1>
         <p className="text-xl text-gray-600 mb-8">
-          The modern way to manage your children's allowance and teach financial responsibility
+          A simple way to manage your children's allowance online and teach financial responsibility.
         </p>
       </div>
 
@@ -54,7 +54,7 @@ export default function Home() {
             rel="noopener noreferrer" 
             className="text-blue-500 hover:text-blue-700"
           >
-            Beau Carnes
+            Beau Carnes.
           </a>
         </p>
       </div>
