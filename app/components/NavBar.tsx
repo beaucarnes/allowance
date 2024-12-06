@@ -22,16 +22,11 @@ export default function NavBar() {
 
   const handleSignOut = async () => {
     try {
-      // First sign out from Firebase
       await signOut(auth)
-      
-      // Then clear the session cookie
       await fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include'
       })
-      
-      // Force a hard refresh to clear all state
       window.location.href = '/'
     } catch (error) {
       console.error('Error signing out:', error)
@@ -61,22 +56,30 @@ export default function NavBar() {
               <span className="font-semibold text-gray-500 text-lg">Track Allowance</span>
             </Link>
 
-            {user && (
-              <div className="flex items-center space-x-4">
-                <Link 
-                  href="/parent" 
-                  className="py-4 px-2 text-gray-500 hover:text-gray-700 transition duration-300"
-                >
-                  Parent Dashboard
-                </Link>
-                <Link 
-                  href="/kids" 
-                  className="py-4 px-2 text-gray-500 hover:text-gray-700 transition duration-300"
-                >
-                  Kids List
-                </Link>
-              </div>
-            )}
+            <div className="flex items-center space-x-4">
+              {user ? (
+                <>
+                  <Link 
+                    href="/parent" 
+                    className="py-4 px-2 text-gray-500 hover:text-gray-700 transition duration-300"
+                  >
+                    Parent Dashboard
+                  </Link>
+                  <Link 
+                    href="/kids" 
+                    className="py-4 px-2 text-gray-500 hover:text-gray-700 transition duration-300"
+                  >
+                    Kids List
+                  </Link>
+                </>
+              ) : null}
+              <Link 
+                href="/help" 
+                className="py-4 px-2 text-gray-500 hover:text-gray-700 transition duration-300"
+              >
+                How to Use
+              </Link>
+            </div>
           </div>
 
           <div className="flex items-center space-x-3">
