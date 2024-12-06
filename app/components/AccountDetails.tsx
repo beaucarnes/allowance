@@ -63,7 +63,7 @@ const AccountDetails = ({ kidId, initialName, initialSlug }: AccountDetailsProps
           className="w-full px-3 py-2 border border-gray-300 rounded-md"
         />
         <p className="mt-1 text-sm text-gray-500">
-          Dashboard URL: {typeof window !== 'undefined' ? `${window.location.origin}/kids/${slug}` : ''}
+          Dashboard URL: {typeof window !== 'undefined' ? `${window.location.origin}/${slug}` : ''}
         </p>
       </div>
       <button
