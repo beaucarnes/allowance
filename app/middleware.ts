@@ -4,13 +4,14 @@ import type { NextRequest } from 'next/server'
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   
-  // Skip middleware for known routes
+  // Skip middleware for known routes and static files
   if (
     path === '/' || 
     path.startsWith('/api/') ||
     path.startsWith('/parent') ||
     path.startsWith('/_next/') ||
-    path.includes('.')
+    path.includes('.') ||
+    path === '/favicon.ico'
   ) {
     return NextResponse.next();
   }
@@ -18,11 +19,8 @@ export async function middleware(request: NextRequest) {
   // For all other paths, treat them as potential kid slugs
   const slug = path.split('/')[1]; // Get first part after /
   if (slug) {
-    const session = request.cookies.get('session')
-    if (!session) {
-      // Let the page handle public access
-      return NextResponse.next()
-    }
+    // Don't check session for kid pages - let the page handle access control
+    return NextResponse.next()
   }
 
   return NextResponse.next()
@@ -30,6 +28,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    // Skip api routes and static files
     '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ]
 } 
