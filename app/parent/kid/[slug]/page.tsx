@@ -79,7 +79,7 @@ async function getTransactions(kidId: string) {
   }
 }
 
-export default async function KidManagePage({ params }: { params: { slug: string } }) {
+export default async function KidPage({ params }: { params: { slug: string } }) {
   const user = await verifySession()
   if (!user) {
     redirect('/parent')
@@ -101,36 +101,37 @@ export default async function KidManagePage({ params }: { params: { slug: string
 
   return (
     <div>
-      <div className="flex justify-between items-start mb-6">
-        <h1 className="text-3xl font-bold">Manage {kid.name}'s Transactions</h1>
-        {kid.parentId === user.uid && (
-          <Link
-            href={`/parent/kid/${kid.slug}/settings`}
-            className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
-          >
-            Settings
-          </Link>
-        )}
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">{kid.name}'s Dashboard</h1>
+        <Link
+          href={`/parent/kid/${kid.slug}/settings`}
+          className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
+        >
+          Settings
+        </Link>
       </div>
 
       <KidTotal kidId={kid.id} />
 
-      {(kid.weeklyAllowance || 0) > 0 && (
-        <div className="bg-blue-50 p-4 rounded-lg mb-6">
+      <div className="mt-8">
+        <h2 className="text-2xl font-bold mb-4">Add Transaction</h2>
+        <AddTransaction kidId={kid.id} />
+      </div>
+
+      {kid.weeklyAllowance > 0 && (
+        <div className="mb-6 bg-blue-50 p-4 rounded-lg">
           <p className="text-sm text-blue-600">
-            Weekly Allowance: ${(kid.weeklyAllowance || 0).toFixed(2)} on {kid.allowanceDay || 'Sunday'}
+            Weekly Allowance: ${kid.weeklyAllowance.toFixed(2)} every {kid.allowanceDay}
           </p>
         </div>
       )}
 
-      <AddTransaction kidId={kid.id} />
-
-      <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+      <div className="mt-8">
         <h2 className="text-2xl font-bold mb-4">Transaction History</h2>
         <TransactionsList 
           kidId={kid.id} 
-          showActions={true} 
-          initialTransactions={transactions.transactions} 
+          showActions={true}
+          initialTransactions={[]}
         />
       </div>
     </div>
