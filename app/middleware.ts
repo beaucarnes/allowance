@@ -2,24 +2,34 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  // Check for session cookie on /kids route
-  if (request.nextUrl.pathname === '/kids' || request.nextUrl.pathname.startsWith('/kids/')) {
+  const path = request.nextUrl.pathname;
+  
+  // Skip middleware for known routes
+  if (
+    path === '/' || 
+    path.startsWith('/api/') ||
+    path.startsWith('/parent') ||
+    path.startsWith('/_next/') ||
+    path.includes('.')
+  ) {
+    return NextResponse.next();
+  }
+
+  // For all other paths, treat them as potential kid slugs
+  const slug = path.split('/')[1]; // Get first part after /
+  if (slug) {
     const session = request.cookies.get('session')
-    
     if (!session) {
-      // If accessing /kids directly, redirect to login
-      if (request.nextUrl.pathname === '/kids') {
-        return NextResponse.redirect(new URL('/parent', request.url))
-      }
-      
-      // For specific kid pages, continue to let the page handle public access
-      if (request.nextUrl.pathname.startsWith('/kids/')) {
-        return NextResponse.next()
-      }
+      // Let the page handle public access
+      return NextResponse.next()
     }
   }
+
+  return NextResponse.next()
 }
 
 export const config = {
-  matcher: ['/kids', '/kids/:path*']
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+  ]
 } 

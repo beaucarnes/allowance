@@ -80,6 +80,7 @@ export default function TransactionsList({
       if (prevPageData) {
         setTransactions(prevPageData.docs)
         setHasMore(prevPageData.hasMore)
+        setCurrentPage(prev => prev - 1)
         return
       }
     }
@@ -114,6 +115,7 @@ export default function TransactionsList({
           lastVisible: snapshot.docs[snapshot.docs.length - 1],
           hasMore: hasMoreDocs
         }])
+        setCurrentPage(prev => prev + 1)
       } catch (error) {
         console.error('Error loading next page:', error)
       } finally {
@@ -269,43 +271,35 @@ export default function TransactionsList({
         </tbody>
       </table>
 
-      {transactions.length > 0 && (
-        <div className="mt-4 flex justify-between items-center">
-          <div className="text-sm text-gray-600">
+      {(currentPage > 1 || hasMore) && (
+        <div className="mt-4 flex items-center justify-between">
+          <button
+            onClick={() => loadPage('prev')}
+            disabled={currentPage <= 1 || isLoading}
+            className={`px-4 py-2 text-sm ${
+              currentPage <= 1
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-blue-500 hover:text-blue-700'
+            }`}
+          >
+            Previous
+          </button>
+
+          <span className="text-sm text-gray-600">
             Page {currentPage}
-          </div>
-          <div className="space-x-2">
-            <button
-              onClick={() => {
-                if (currentPage > 1) {
-                  setCurrentPage(prev => prev - 1)
-                  loadPage('prev')
-                }
-              }}
-              disabled={currentPage === 1 || isLoading}
-              className={`px-4 py-2 rounded ${
-                currentPage === 1 || isLoading
-                  ? 'bg-gray-200 cursor-not-allowed'
-                  : 'bg-blue-500 hover:bg-blue-600 text-white'
-              }`}
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => {
-                setCurrentPage(prev => prev + 1)
-                loadPage('next')
-              }}
-              disabled={!hasMore || isLoading}
-              className={`px-4 py-2 rounded ${
-                !hasMore || isLoading
-                  ? 'bg-gray-200 cursor-not-allowed'
-                  : 'bg-blue-500 hover:bg-blue-600 text-white'
-              }`}
-            >
-              Next
-            </button>
-          </div>
+          </span>
+
+          <button
+            onClick={() => loadPage('next')}
+            disabled={!hasMore || isLoading}
+            className={`px-4 py-2 text-sm ${
+              !hasMore
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-blue-500 hover:text-blue-700'
+            }`}
+          >
+            Next
+          </button>
         </div>
       )}
     </div>

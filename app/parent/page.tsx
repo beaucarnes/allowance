@@ -222,7 +222,7 @@ export default function ParentDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {kids.map((kid: any) => (
             <Link 
-              href={`/parent/kid/${kid.slug}`}  
+              href={`/parent/kid/${kid.slug}`}
               key={kid.id} 
               className="block p-6 bg-white rounded-lg border border-gray-200 shadow-md hover:bg-gray-50"
             >

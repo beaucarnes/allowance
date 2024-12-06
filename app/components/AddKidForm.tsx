@@ -113,7 +113,7 @@ export default function AddKidForm({ userId, userEmail, onClose, onSuccess }: Ad
               Dashboard URL
             </label>
             <div className="flex items-center space-x-2">
-              <span className="text-gray-500">/kids/</span>
+              <span className="text-gray-500">/</span>
               <input
                 type="text"
                 value={slug}

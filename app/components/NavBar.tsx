@@ -73,7 +73,7 @@ export default function NavBar() {
                   href="/kids" 
                   className="py-4 px-2 text-gray-500 hover:text-gray-700 transition duration-300"
                 >
-                  Kids
+                  Kids List
                 </Link>
               </div>
             )}

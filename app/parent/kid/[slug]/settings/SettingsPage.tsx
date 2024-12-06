@@ -25,7 +25,7 @@ export default function SettingsPage({ kid }: { kid: KidData }) {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Settings for {kid.name}</h1>
         <Link
-          href={`/parent/kid/${kid.slug}`}
+          href={`/${kid.slug}`}
           className="text-gray-600 hover:text-gray-800"
         >
           Back to Dashboard
