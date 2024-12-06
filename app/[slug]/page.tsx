@@ -2,8 +2,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 import { cookies } from 'next/headers'
-import { getAdminAuth } from '@/app/lib/firebase-admin-app'
-import { getFirestore } from 'firebase-admin/firestore'
+import { getAdminAuth, getAdminFirestore } from '@/app/lib/firebase-admin-app'
 import { notFound, redirect } from 'next/navigation'
 import KidTotal from '../components/KidTotal'
 import TransactionsList from '../components/TransactionsList'
@@ -40,7 +39,7 @@ async function verifySession() {
 }
 
 async function getKidDataBySlug(slug: string): Promise<KidData | null> {
-  const db = getFirestore()
+  const db = getAdminFirestore()
   const kidsSnapshot = await db.collection('kids')
     .where('slug', '==', slug)
     .get()

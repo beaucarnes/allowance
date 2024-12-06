@@ -11,6 +11,10 @@ service cloud.firestore {
         );
       }
 
+      function isOwner() {
+        return request.auth != null && resource.data.parentId == request.auth.uid;
+      }
+
       // Allow listing kids for authenticated users
       allow list: if request.auth != null;
 
@@ -23,6 +27,9 @@ service cloud.firestore {
 
       // Allow creating if authenticated
       allow create: if request.auth != null;
+
+      // Allow deletion only if user is the owner
+      allow delete: if request.auth != null && isOwner();
 
       // Transactions subcollection
       match /transactions/{transactionId} {
