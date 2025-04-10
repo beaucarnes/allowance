@@ -58,7 +58,9 @@ export default function AddTransaction({ kidId }: AddTransactionProps) {
       await addDoc(transactionsRef, {
         amount: finalAmount,
         description: description,
-        date: serverTimestamp()
+        date: serverTimestamp(),
+        parentName: auth.currentUser?.displayName || 'Unknown Parent',
+        parentEmail: auth.currentUser?.email || 'unknown@email.com'
       })
 
       console.log('Transaction created successfully')

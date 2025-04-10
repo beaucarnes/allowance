@@ -200,12 +200,20 @@ export default function ParentDashboard() {
             Logged in as: {user.displayName} ({user.email})
           </p>
         </div>
-        <button
-          onClick={handleAddKid}
-          className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded"
-        >
-          Add New Kid
-        </button>
+        <div className="flex space-x-4">
+          <Link
+            href="/parent/contributions"
+            className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+          >
+            Show Contributions
+          </Link>
+          <button
+            onClick={handleAddKid}
+            className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded"
+          >
+            Add New Kid
+          </button>
+        </div>
       </div>
 
       {kids.length === 0 ? (
