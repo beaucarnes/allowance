@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { auth, db } from '../lib/firebase'
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth'
-import { collection, query, where, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore'
+import { collection, query, where, getDocs, addDoc, updateDoc, doc, or } from 'firebase/firestore'
 import Link from 'next/link'
 import AddKidForm from '../components/AddKidForm'
 
@@ -50,55 +50,23 @@ export default function ParentDashboard() {
 
   const fetchKids = async (parentId: string, email: string) => {
     try {
-      console.log('Fetching kids for:', { parentId, email });
-
-      // Query for kids where user is the parent
-      console.log('Building parent query...');
-      const parentKidsQuery = query(
-        collection(db, 'kids'), 
-        where('parentId', '==', parentId)
-      );
-
-      console.log('Executing parent query...');
-      const parentKidsSnapshot = await getDocs(parentKidsQuery);
-      console.log('Parent kids result:', {
-        empty: parentKidsSnapshot.empty,
-        size: parentKidsSnapshot.size
-      });
-
-      const parentKids = parentKidsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-      // Query for kids shared with the user
-      console.log('Building shared query...');
-      const sharedKidsQuery = query(
+      const kidsQuery = query(
         collection(db, 'kids'),
-        where('sharedWith', 'array-contains', email)
+        or(
+          where('parentId', '==', parentId),
+          where('sharedWith', 'array-contains', email)
+        )
       );
 
-      console.log('Executing shared query...');
-      const sharedKidsSnapshot = await getDocs(sharedKidsQuery);
-      console.log('Shared kids result:', {
-        empty: sharedKidsSnapshot.empty,
-        size: sharedKidsSnapshot.size
-      });
-
-      const sharedKids = sharedKidsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-      // Combine and deduplicate the results
-      const allKids = [...parentKids, ...sharedKids];
+      const kidsSnapshot = await getDocs(kidsQuery);
+      const allKids = kidsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
       const uniqueKids = Array.from(new Map(allKids.map(kid => [kid.id, kid])).values());
       
-      console.log('Final kids count:', uniqueKids.length);
       setKids(uniqueKids);
     } catch (err) {
       const error = err as { code?: string; message?: string };
       console.error('Error fetching kids:', error);
-      console.log('Error details:', {
-        code: error.code,
-        message: error.message,
-        parentId,
-        email
-      });
     }
   };
 
@@ -113,7 +81,6 @@ export default function ParentDashboard() {
     try {
       const result = await signInWithPopup(auth, provider)
       const idToken = await result.user.getIdToken()
-      console.log('Got ID token, creating session...')
       
       // Create session cookie
       const response = await fetch('/api/auth/session', {
@@ -126,7 +93,6 @@ export default function ParentDashboard() {
       })
 
       const data = await response.json()
-      console.log('Session creation response:', data)
 
       if (response.ok) {
         // Wait a moment for the cookie to be set
@@ -141,7 +107,6 @@ export default function ParentDashboard() {
           router.refresh()
         }
       } else {
-        console.error('Session creation failed:', data)
         alert('Failed to create session. Please try again.')
       }
     } catch (error) {

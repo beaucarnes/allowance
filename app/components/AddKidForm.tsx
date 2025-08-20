@@ -1,8 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { db } from '../lib/firebase'
 import { collection, query, where, getDocs, addDoc } from 'firebase/firestore'
+
+function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
+  let timeout: NodeJS.Timeout
+  return ((...args: any[]) => {
+    clearTimeout(timeout)
+    timeout = setTimeout(() => func(...args), wait)
+  }) as T
+}
 
 interface AddKidFormProps {
   userId: string
@@ -35,26 +43,29 @@ export default function AddKidForm({ userId, userEmail, onClose, onSuccess }: Ad
     checkSlugAvailability(newSlug)
   }
 
-  const checkSlugAvailability = async (slugToCheck: string) => {
-    if (!slugToCheck) {
-      setIsAvailable(null)
-      return
-    }
+  const checkSlugAvailability = useCallback(
+    debounce(async (slugToCheck: string) => {
+      if (!slugToCheck) {
+        setIsAvailable(null)
+        return
+      }
 
-    setIsChecking(true)
-    try {
-      const q = query(
-        collection(db, 'kids'),
-        where('slug', '==', slugToCheck)
-      )
-      const snapshot = await getDocs(q)
-      setIsAvailable(snapshot.empty)
-    } catch (error) {
-      console.error('Error checking slug availability:', error)
-    } finally {
-      setIsChecking(false)
-    }
-  }
+      setIsChecking(true)
+      try {
+        const q = query(
+          collection(db, 'kids'),
+          where('slug', '==', slugToCheck)
+        )
+        const snapshot = await getDocs(q)
+        setIsAvailable(snapshot.empty)
+      } catch (error) {
+        console.error('Error checking slug availability:', error)
+      } finally {
+        setIsChecking(false)
+      }
+    }, 300),
+    []
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -154,4 +165,4 @@ export default function AddKidForm({ userId, userEmail, onClose, onSuccess }: Ad
       </div>
     </div>
   )
-} 
+}  
