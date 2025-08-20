@@ -87,6 +87,7 @@ export default function Contributions() {
     setLoading(true)
     try {
       const allContributions: Contribution[] = []
+      const allCredits: Contribution[] = []
       
       // Get start and end date for the selected month
       const startDate = new Date(selectedYear, selectedMonth, 1)
@@ -141,22 +142,70 @@ export default function Contributions() {
           })
           .filter(Boolean) as Contribution[] // Remove null items
         
+        // Filter client-side for credits in date range (excluding weekly allowance)
+        const kidCredits = snapshot.docs
+          .map(doc => {
+            const data = doc.data()
+            
+            // Skip if not a credit (positive amount)
+            if (!data.amount || data.amount <= 0) {
+              return null
+            }
+            
+            // Skip if no date
+            if (!data.date) {
+              return null
+            }
+            
+            const txDate = data.date.toDate()
+            
+            // Skip if outside date range
+            if (txDate < startDate || txDate > endDate) {
+              return null
+            }
+            
+            const description = data.description || ''
+            if (description.toLowerCase().includes('weekly allowance') || 
+                description.toLowerCase().includes('allowance')) {
+              return null
+            }
+            
+            return {
+              id: doc.id,
+              amount: data.amount, // Keep positive for credits
+              description: data.description || 'No description',
+              date: txDate,
+              kidName: kid.name,
+              parentName: data.parentName || 'Unknown Parent'
+            }
+          })
+          .filter(Boolean) as Contribution[] // Remove null items
+        
         console.log('Filtered debit contributions for kid:', kidContributions.length)
+        console.log('Filtered credit contributions for kid:', kidCredits.length)
         allContributions.push(...kidContributions)
+        allCredits.push(...kidCredits)
       }
       
       console.log('Total contributions found:', allContributions.length)
+      console.log('Total credits found:', allCredits.length)
       
       // Sort by date descending
       allContributions.sort((a, b) => b.date.getTime() - a.date.getTime())
       
       setContributions(allContributions)
       
-      // Calculate parent totals
+      // Calculate parent totals (debits minus credits)
       const totals: {[key: string]: number} = {}
+      
       allContributions.forEach(contribution => {
         const { parentName, amount } = contribution
         totals[parentName] = (totals[parentName] || 0) + amount
+      })
+      
+      allCredits.forEach(credit => {
+        const { parentName, amount } = credit
+        totals[parentName] = (totals[parentName] || 0) - amount
       })
       
       const parentTotalsList: ParentTotal[] = Object.entries(totals).map(([parentName, total]) => ({
@@ -193,7 +242,7 @@ export default function Contributions() {
         <div>
           <h1 className="text-3xl font-bold">Parent Contributions</h1>
           <p className="text-gray-600 mt-1">
-            View all debit transactions for all kids
+            View all debit transactions for all kids, minus any cash deposits
           </p>
         </div>
         <Link
@@ -305,4 +354,4 @@ export default function Contributions() {
       </div>
     </div>
   )
-} 
+}  
