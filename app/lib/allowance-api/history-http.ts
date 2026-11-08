@@ -212,14 +212,20 @@ export async function handleHistory(request: Request, deps: HistoryDeps): Promis
         ...(error.field ? { field: error.field } : {}),
       })
     }
-    const code = failedPrecondition(error) ? 'index_required' : 'internal_error'
-    deps.log({ route: 'history', status: code === 'index_required' ? 500 : 500, code, child: childForLog })
-    return json(500, { error: code })
+    const failure = classifyFirestoreFailure(error)
+    deps.log({ route: 'history', status: 500, code: failure.code, child: childForLog, grpc: failure.grpc })
+    return json(500, { error: failure.code })
   }
 }
 
-function failedPrecondition(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false
-  const code = (error as { code?: unknown }).code
-  return code === 'failed-precondition' || code === 9
+function classifyFirestoreFailure(error: unknown): { code: 'index_required' | 'internal_error'; grpc?: number } {
+  if (!error || typeof error !== 'object') return { code: 'internal_error' }
+  const raw = (error as { code?: unknown }).code
+  const grpc = typeof raw === 'number' ? raw : undefined
+  const message = typeof (error as { message?: unknown }).message === 'string'
+    ? (error as { message: string }).message
+    : ''
+  const index = raw === 9 || raw === 'failed-precondition' || raw === 'FAILED_PRECONDITION'
+    || ((raw === 3 || raw === 'invalid-argument') && /index/i.test(message))
+  return { code: index ? 'index_required' : 'internal_error', grpc }
 }

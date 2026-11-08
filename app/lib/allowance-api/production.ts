@@ -1,9 +1,10 @@
-import { FieldPath, FieldValue, Timestamp } from 'firebase-admin/firestore'
+import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { getBotFirestore } from './admin'
 import { RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS } from './constants'
 import { createFirestoreLedgerStore, type FirestoreDb } from './firestore-store'
 import { handleHistory, type HistoryDeps } from './history-http'
 import { createFirestoreHistorySource, type HistoryDb } from './history-store'
+import { timestampToDate } from './history-time'
 import { handleEntry, handleHealth, logAllowanceEvent, type HandlerDeps } from './http'
 import { createRateLimiter } from './rate-limit'
 
@@ -57,12 +58,8 @@ export function getHistory(request: Request) {
     async historySource() {
       const db = getBotFirestore() as unknown as HistoryDb
       return createFirestoreHistorySource(db, {
-        documentId: () => FieldPath.documentId(),
         toTimestamp: (date) => Timestamp.fromDate(date),
-        fromTimestamp: (value) => {
-          if (value instanceof Timestamp) return value.toDate()
-          return null
-        },
+        fromTimestamp: timestampToDate,
       })
     },
   }

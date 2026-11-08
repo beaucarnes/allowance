@@ -1,7 +1,11 @@
 import { KID_LOOKUP_LIMIT } from './constants'
 import { AllowanceError } from './errors'
-import type { HistoryRecord, HistoryResume, HistorySource } from './history'
+import { compareHistory, type HistoryRecord, type HistoryResume, type HistorySource } from './history'
+import { timestampToDate } from './history-time'
+import type { AllowedChild } from './constants'
 import type { KidLookup, KidSnapshot } from './ledger'
+
+const SAME_TIMESTAMP_LIMIT = 100
 
 type Query = {
   where(field: string, op: string, value: unknown): Query
@@ -27,7 +31,6 @@ export type HistoryDb = {
 }
 
 export type HistoryCodec = {
-  documentId: () => unknown
   toTimestamp: (date: Date) => unknown
   fromTimestamp: (value: unknown) => Date | null
 }
@@ -45,27 +48,48 @@ function kidSnapshot(id: string, get: (field: string) => unknown): KidSnapshot {
   }
 }
 
-function applyResume(
-  query: { where(field: string, op: string, value: unknown): Query },
-  resume: HistoryResume,
+/**
+ * Date-range reads order only by `date`. Firestore already stores document
+ * name as the tie-break on that single-field index. An explicit
+ * orderBy(documentId()) is a second ordered field and is not how the website
+ * reads this collection.
+ */
+export function historyReadQueries(
+  collection: { where(field: string, op: string, value: unknown): Query },
   codec: HistoryCodec,
-  startMs: number,
-  endMs: number,
-): Query {
-  const end = codec.toTimestamp(new Date(endMs))
-  if (resume.kind === 'after-time') {
-    return query.where('date', '>', codec.toTimestamp(new Date(resume.ms))).where('date', '<', end)
+  input: { startMs: number; endMs: number; resume: HistoryResume; limit: number },
+): Query[] {
+  const end = codec.toTimestamp(new Date(input.endMs))
+  if (input.resume.kind === 'after-id') {
+    const at = codec.toTimestamp(new Date(input.resume.ms))
+    return [
+      collection.where('date', '==', at).limit(SAME_TIMESTAMP_LIMIT),
+      collection.where('date', '>', at).where('date', '<', end).orderBy('date', 'asc').limit(input.limit),
+    ]
   }
-  if (resume.kind === 'from-time') {
-    return query.where('date', '>=', codec.toTimestamp(new Date(resume.ms))).where('date', '<', end)
+  const lowerMs = input.resume.kind === 'start' ? input.startMs : input.resume.ms
+  const lowerOp = input.resume.kind === 'after-time' ? '>' : '>='
+  return [
+    collection
+      .where('date', lowerOp, codec.toTimestamp(new Date(lowerMs)))
+      .where('date', '<', end)
+      .orderBy('date', 'asc')
+      .limit(input.limit),
+  ]
+}
+
+function mapTransaction(doc: DocSnap, child: AllowedChild, codec: HistoryCodec): HistoryRecord {
+  const timestamp = codec.fromTimestamp(doc.get('date'))
+  if (!timestamp) throw new AllowanceError('invalid_stored_entry', 500)
+  const amount = doc.get('amount')
+  const description = doc.get('description')
+  return {
+    id: doc.id,
+    child,
+    amount: typeof amount === 'number' ? amount : Number.NaN,
+    description: typeof description === 'string' ? description : null,
+    timestamp,
   }
-  let bounded = query
-    .where('date', '>=', codec.toTimestamp(new Date(startMs)))
-    .where('date', '<', end)
-  if (resume.kind === 'after-id') {
-    bounded = bounded.startAfter(codec.toTimestamp(new Date(resume.ms)), resume.id)
-  }
-  return bounded
 }
 
 export function createFirestoreHistorySource(db: HistoryDb, codec: HistoryCodec): HistorySource {
@@ -80,26 +104,22 @@ export function createFirestoreHistorySource(db: HistoryDb, codec: HistoryCodec)
       }
     },
     async readTransactions({ kidId, child, startMs, endMs, resume, limit }): Promise<HistoryRecord[]> {
-      const query = applyResume(kids.doc(kidId).collection('transactions'), resume, codec, startMs, endMs)
-        .orderBy('date', 'asc')
-        .orderBy(codec.documentId(), 'asc')
-        .limit(limit)
-      const snap = await query.get()
-      return snap.docs.map((doc) => {
-        const timestamp = codec.fromTimestamp(doc.get('date'))
-        if (!timestamp || !Number.isFinite(timestamp.getTime())) {
-          throw new AllowanceError('invalid_stored_entry', 500)
-        }
-        const amount = doc.get('amount')
-        const description = doc.get('description')
-        return {
-          id: doc.id,
-          child,
-          amount: typeof amount === 'number' ? amount : Number.NaN,
-          description: typeof description === 'string' ? description : null,
-          timestamp,
-        }
+      const queries = historyReadQueries(kids.doc(kidId).collection('transactions'), codec, {
+        startMs,
+        endMs,
+        resume,
+        limit,
       })
+      const snaps = await Promise.all(queries.map((query) => query.get()))
+      if (resume.kind === 'after-id' && snaps[0].docs.length >= SAME_TIMESTAMP_LIMIT) {
+        throw new AllowanceError('result_window_exceeded', 500)
+      }
+      const rows = snaps.flatMap((snap) => snap.docs.map((doc) => mapTransaction(doc, child, codec)))
+      const filtered = resume.kind === 'after-id'
+        ? rows.filter((row) => row.timestamp.getTime() > resume.ms || (row.timestamp.getTime() === resume.ms && row.id > resume.id))
+        : rows
+      filtered.sort(compareHistory)
+      return filtered.slice(0, limit)
     },
   }
 }

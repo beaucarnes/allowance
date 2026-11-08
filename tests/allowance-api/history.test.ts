@@ -14,7 +14,10 @@ import {
   historyWindow,
   nyMidnightUtc,
 } from '../../app/lib/allowance-api/history-time'
-import { createFirestoreHistorySource, type HistoryDb } from '../../app/lib/allowance-api/history-store'
+import { createFirestoreHistorySource, historyReadQueries, type HistoryDb } from '../../app/lib/allowance-api/history-store'
+import { timestampToDate } from '../../app/lib/allowance-api/history-time'
+import { initializeApp } from 'firebase-admin/app'
+import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import type { LogEvent } from '../../app/lib/allowance-api/http'
 import type { AllowedChild } from '../../app/lib/allowance-api/constants'
 
@@ -337,6 +340,19 @@ describe('history HTTP', () => {
     const response = await handleHistory(authed('/api/allowance/history?child=judah&start=2026-09-01&end=2026-09-30'), deps)
     assert.equal(response.status, 500)
     assert.deepEqual(await response.json(), { error: 'index_required' })
+    assert.equal(JSON.stringify(deps.logs).includes('console.example'), false)
+
+    const httpIndex = historyDeps({
+      async historySource() {
+        const error = new Error('The query requires an index. https://console.example/index') as Error & { code: number }
+        error.code = 3
+        throw error
+      },
+    })
+    const mapped = await handleHistory(authed('/api/allowance/history?child=judah&start=2026-09-01&end=2026-09-30'), httpIndex)
+    assert.deepEqual(await mapped.json(), { error: 'index_required' })
+    assert.equal(JSON.stringify(httpIndex.logs).includes('console.example'), false)
+    assert.equal(httpIndex.logs.at(-1)?.grpc, 3)
   })
 })
 
@@ -400,7 +416,6 @@ describe('firestore history query', () => {
       return query
     }
     const source = createFirestoreHistorySource(db as unknown as HistoryDb, {
-      documentId: () => 'document-id',
       toTimestamp: (date) => date.toISOString(),
       fromTimestamp: (value) => (value && typeof value === 'object' && 'toDate' in value ? (value as { toDate: () => Date }).toDate() : null),
     })
@@ -418,7 +433,7 @@ describe('firestore history query', () => {
     assert.deepEqual(page.records.map((record) => record.description), ['candy'])
     assert.equal(calls.some((call) => call.startsWith('tx amount')), false)
     assert.equal(calls.includes('order date'), true)
-    assert.equal(calls.includes('order document-id'), true)
+    assert.equal(calls.includes('order document-id'), false)
     assert.equal(calls.includes('tx date >='), true)
     assert.equal(calls.includes('tx date <'), true)
   })
@@ -448,6 +463,40 @@ function historyDeps(overrides: Partial<HistoryDeps>): HistoryDeps & { logs: Log
 function depsLogs(deps: HistoryDeps & { logs?: LogEvent[] }): LogEvent[] {
   return deps.logs ?? []
 }
+
+describe('Firestore SDK query', () => {
+  it('does not add a document-id order to the date range query', () => {
+    const app = initializeApp({ projectId: 'demo-allowance' }, 'history-query-shape')
+    const col = getFirestore(app).collection('kids').doc('kid').collection('transactions')
+    const codec = {
+      toTimestamp: (date: Date) => Timestamp.fromDate(date),
+      fromTimestamp: timestampToDate,
+    }
+    const queries = historyReadQueries(col, codec, {
+      startMs: Date.parse('2026-09-08T04:00:00.000Z'),
+      endMs: Date.parse('2026-11-09T05:00:00.000Z'),
+      resume: { kind: 'start' },
+      limit: 20,
+    }) as unknown as { toStructuredQuery: () => { orderBy?: { field: { fieldPath: string } }[] } }[]
+    const structured = queries.map((query) => query.toStructuredQuery())
+    assert.equal(structured.length, 1)
+    assert.deepEqual(structured[0].orderBy, [{ field: { fieldPath: 'date' }, direction: 'ASCENDING' }])
+    assert.equal(JSON.stringify(structured).includes('__name__'), false)
+  })
+
+  it('decodes timestamp values that are not the Admin Timestamp class', () => {
+    const instant = new Date('2026-10-01T16:00:00.000Z')
+    const seconds = Math.floor(instant.getTime() / 1000)
+    const nanoseconds = (instant.getTime() % 1000) * 1_000_000
+    class OtherTimestamp {
+      toDate() { return instant }
+    }
+    assert.equal(timestampToDate(new OtherTimestamp())?.toISOString(), instant.toISOString())
+    assert.equal(timestampToDate({ seconds, nanoseconds })?.toISOString(), instant.toISOString())
+    assert.equal(timestampToDate(Timestamp.fromDate(instant))?.toISOString(), instant.toISOString())
+    assert.equal(timestampToDate(null), null)
+  })
+})
 
 function authed(path: string) {
   return new Request(`https://www.trackallowance.com${path}`, {

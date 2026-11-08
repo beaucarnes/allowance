@@ -19,6 +19,7 @@ export type LogEvent = {
   code?: string
   child?: string | null
   replay?: boolean | null
+  grpc?: number
 }
 
 export type HandlerDeps = {
@@ -33,6 +34,9 @@ export function logAllowanceEvent(event: LogEvent): void {
   const child = event.child === 'all' || (event.child && isAllowedChild(event.child))
     ? event.child
     : null
+  const grpc = Number.isInteger(event.grpc) && (event.grpc as number) >= 0 && (event.grpc as number) <= 16
+    ? event.grpc
+    : null
   console.info(JSON.stringify({
     source: 'allowance-bot-api',
     route: event.route,
@@ -40,6 +44,7 @@ export function logAllowanceEvent(event: LogEvent): void {
     code: event.code ?? null,
     child,
     replay: event.replay ?? null,
+    grpc,
   }))
 }
 

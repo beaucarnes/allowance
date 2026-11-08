@@ -97,6 +97,36 @@ export function calendarDateInNy(instant: Date): string {
   return `${map.year}-${map.month}-${map.day}`
 }
 
+/** Accepts Admin SDK timestamps and plain `{seconds,nanoseconds}` values. */
+export function timestampToDate(value: unknown): Date | null {
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value : null
+  if (!value || typeof value !== 'object') return null
+  const record = value as {
+    toDate?: () => Date
+    seconds?: number
+    nanoseconds?: number
+    _seconds?: number
+    _nanoseconds?: number
+  }
+  if (typeof record.toDate === 'function') {
+    try {
+      const date = record.toDate()
+      if (date instanceof Date && Number.isFinite(date.getTime())) return date
+    } catch {
+      return null
+    }
+  }
+  const seconds = typeof record.seconds === 'number' ? record.seconds : record._seconds
+  const nanos = typeof record.nanoseconds === 'number'
+    ? record.nanoseconds
+    : typeof record._nanoseconds === 'number'
+      ? record._nanoseconds
+      : 0
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return null
+  const date = new Date(seconds * 1000 + Math.trunc(nanos / 1_000_000))
+  return Number.isFinite(date.getTime()) ? date : null
+}
+
 export function historyWindow(start: string, end: string): { startMs: number; endMs: number } {
   if (end < start) throw new AllowanceError('invalid_request', 400, 'end')
   if (inclusiveDayCount(start, end) > HISTORY_MAX_RANGE_DAYS) {
