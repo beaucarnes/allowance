@@ -7,9 +7,12 @@ import {
   KID_LOOKUP_LIMIT,
   RATE_LIMIT_MAX,
   RATE_LIMIT_WINDOW_MS,
-  type AllowedChild,
 } from '@/app/lib/allowance-api/constants'
 import { formatMoney } from '@/app/lib/allowance-api/money'
+import {
+  extractParentBearer,
+  resolveParentTokenScope,
+} from '@/app/lib/allowance-api/parent-token'
 import { createRateLimiter } from '@/app/lib/allowance-api/rate-limit'
 
 export const runtime = 'nodejs'
@@ -31,28 +34,42 @@ function json(status: number, body: unknown, extra?: Record<string, string>): Re
 }
 
 export async function GET(request: Request): Promise<Response> {
-  const token = botTokenFromEnv(process.env)
-  if (!token) {
-    return json(503, { error: 'not_configured' })
-  }
   if (!rateLimit(Date.now())) {
     return json(429, { error: 'rate_limited' })
   }
-  if (!bearerAuthorized(request.headers.get('authorization'), token)) {
-    return json(401, { error: 'unauthorized' }, { 'www-authenticate': 'Bearer' })
-  }
 
-  const config = assessWriteConfig(process.env)
-  if (!config.writeReady || !config.ownerUid) {
-    return json(503, { error: 'not_configured', missing: config.missing })
+  const authHeader = request.headers.get('authorization')
+  let ownerUid: string | null = null
+  let allowedChildren: readonly string[] = ALLOWED_CHILDREN
+
+  if (extractParentBearer(authHeader)) {
+    const scope = await resolveParentTokenScope(authHeader)
+    if (!scope) {
+      return json(401, { error: 'unauthorized' }, { 'www-authenticate': 'Bearer' })
+    }
+    ownerUid = scope.ownerUid
+    allowedChildren = scope.allowedChildren
+  } else {
+    const token = botTokenFromEnv(process.env)
+    if (!token) {
+      return json(503, { error: 'not_configured' })
+    }
+    if (!bearerAuthorized(authHeader, token)) {
+      return json(401, { error: 'unauthorized' }, { 'www-authenticate': 'Bearer' })
+    }
+    const config = assessWriteConfig(process.env)
+    if (!config.writeReady || !config.ownerUid) {
+      return json(503, { error: 'not_configured', missing: config.missing })
+    }
+    ownerUid = config.ownerUid
   }
 
   const url = new URL(request.url)
   const rawChild = url.searchParams.get('child')
-  let targetChildren: readonly AllowedChild[] = ALLOWED_CHILDREN
+  let targetChildren: readonly string[] = allowedChildren
   if (rawChild !== null) {
     const slug = rawChild.trim().toLowerCase()
-    if (!isAllowedChild(slug)) {
+    if (!allowedChildren.includes(slug) && !isAllowedChild(slug)) {
       return json(400, { error: 'invalid_request', field: 'child' })
     }
     targetChildren = [slug]
@@ -69,7 +86,7 @@ export async function GET(request: Request): Promise<Response> {
         .limit(KID_LOOKUP_LIMIT)
         .get()
 
-      const owned = snap.docs.filter((d) => d.get('parentId') === config.ownerUid)
+      const owned = snap.docs.filter((d) => d.get('parentId') === ownerUid)
       if (owned.length !== 1) continue
 
       const kidDoc = owned[0]

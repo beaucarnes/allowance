@@ -6,6 +6,12 @@ import { handleHistory, type HistoryDeps } from './history-http'
 import { createFirestoreHistorySource, type HistoryDb } from './history-store'
 import { timestampToDate } from './history-time'
 import { handleEntry, handleHealth, logAllowanceEvent, type HandlerDeps } from './http'
+import {
+  handleParentTokenEntry,
+  handleParentTokenHealth,
+  handleParentTokenHistory,
+} from './parent-api-handler'
+import { extractParentBearer } from './parent-token'
 import { createRateLimiter } from './rate-limit'
 
 /**
@@ -42,14 +48,23 @@ export function productionDeps(): HandlerDeps {
 }
 
 export function GET(request: Request) {
+  if (extractParentBearer(request.headers.get('authorization'))) {
+    return handleParentTokenHealth(request, rateLimit)
+  }
   return handleHealth(request, productionDeps())
 }
 
 export function POST(request: Request) {
+  if (extractParentBearer(request.headers.get('authorization'))) {
+    return handleParentTokenEntry(request, rateLimit)
+  }
   return handleEntry(request, productionDeps())
 }
 
 export function getHistory(request: Request) {
+  if (extractParentBearer(request.headers.get('authorization'))) {
+    return handleParentTokenHistory(request, rateLimit)
+  }
   const deps: HistoryDeps = {
     env: process.env,
     now: () => new Date(),
