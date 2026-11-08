@@ -15,8 +15,16 @@ export const ENV_FIREBASE_PROJECT_ID = 'FIREBASE_PROJECT_ID'
 export const ENV_FIREBASE_CLIENT_EMAIL = 'FIREBASE_CLIENT_EMAIL'
 export const ENV_FIREBASE_PRIVATE_KEY = 'FIREBASE_PRIVATE_KEY'
 
-/** Calendar "today" for rejecting future dates. */
+/** Calendar "today" for rejecting future write dates. */
 export const LEDGER_TIME_ZONE = 'America/Los_Angeles'
+
+/** Inclusive history ranges use this timezone's calendar days, including DST. */
+export const HISTORY_TIME_ZONE = 'America/New_York'
+export const HISTORY_DEFAULT_LIMIT = 50
+export const HISTORY_MAX_LIMIT = 100
+export const HISTORY_MAX_RANGE_DAYS = 366
+export const HISTORY_MAX_SCAN = 400
+export const HISTORY_MAX_DATE = '2100-12-31'
 
 /** Inclusive per-entry cap. $10,000.00. */
 export const MAX_AMOUNT_CENTS = 1_000_000

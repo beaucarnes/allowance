@@ -1,7 +1,9 @@
-import { FieldValue, Timestamp } from 'firebase-admin/firestore'
+import { FieldPath, FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { getBotFirestore } from './admin'
 import { RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS } from './constants'
 import { createFirestoreLedgerStore, type FirestoreDb } from './firestore-store'
+import { handleHistory, type HistoryDeps } from './history-http'
+import { createFirestoreHistorySource, type HistoryDb } from './history-store'
 import { handleEntry, handleHealth, logAllowanceEvent, type HandlerDeps } from './http'
 import { createRateLimiter } from './rate-limit'
 
@@ -44,4 +46,25 @@ export function GET(request: Request) {
 
 export function POST(request: Request) {
   return handleEntry(request, productionDeps())
+}
+
+export function getHistory(request: Request) {
+  const deps: HistoryDeps = {
+    env: process.env,
+    now: () => new Date(),
+    rateLimit,
+    log: logAllowanceEvent,
+    async historySource() {
+      const db = getBotFirestore() as unknown as HistoryDb
+      return createFirestoreHistorySource(db, {
+        documentId: () => FieldPath.documentId(),
+        toTimestamp: (date) => Timestamp.fromDate(date),
+        fromTimestamp: (value) => {
+          if (value instanceof Timestamp) return value.toDate()
+          return null
+        },
+      })
+    },
+  }
+  return handleHistory(request, deps)
 }

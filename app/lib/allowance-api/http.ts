@@ -14,7 +14,7 @@ const BODY_KEYS = new Set(['child', 'type', 'amount', 'description', 'date'])
 const MAX_BODY_CHARS = 4096
 
 export type LogEvent = {
-  route: 'health' | 'entries'
+  route: 'health' | 'entries' | 'history'
   status: number
   code?: string
   child?: string | null
@@ -30,7 +30,9 @@ export type HandlerDeps = {
 }
 
 export function logAllowanceEvent(event: LogEvent): void {
-  const child = event.child && isAllowedChild(event.child) ? event.child : null
+  const child = event.child === 'all' || (event.child && isAllowedChild(event.child))
+    ? event.child
+    : null
   console.info(JSON.stringify({
     source: 'allowance-bot-api',
     route: event.route,
