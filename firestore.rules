@@ -2,6 +2,10 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    match /subscriptions/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     match /kids/{kidId} {
       function hasAccess() {
         return request.auth != null && (
@@ -13,6 +17,31 @@ service cloud.firestore {
 
       function isOwner() {
         return request.auth != null && resource.data.parentId == request.auth.uid;
+      }
+
+      function kidHasAccess() {
+        return request.auth != null && 
+          exists(/databases/$(database)/documents/kids/$(kidId)) && (
+            get(/databases/$(database)/documents/kids/$(kidId)).data.parentId == request.auth.uid ||
+            (
+              get(/databases/$(database)/documents/kids/$(kidId)).data.sharedWith is list && 
+              request.auth.token.email in get(/databases/$(database)/documents/kids/$(kidId)).data.sharedWith
+            )
+          );
+      }
+
+      function kidIsPublic() {
+        return get(/databases/$(database)/documents/kids/$(kidId)).data.public == true;
+      }
+
+      function kidAllowsSubaccountTransfers() {
+        return get(/databases/$(database)/documents/kids/$(kidId)).data.public == true &&
+               get(/databases/$(database)/documents/kids/$(kidId)).data.allowKidSubaccountTransfers != false;
+      }
+
+      function kidAllowsChoreCheckoff() {
+        return get(/databases/$(database)/documents/kids/$(kidId)).data.public == true &&
+               get(/databases/$(database)/documents/kids/$(kidId)).data.allowKidChoreCheckoff != false;
       }
 
       // Allow listing kids for authenticated users
@@ -31,32 +60,33 @@ service cloud.firestore {
       // Allow deletion only if user is the owner
       allow delete: if request.auth != null && isOwner();
 
-      // Transactions subcollection
+      // Transactions subcollection (strictly parent/shared access for writes)
       match /transactions/{transactionId} {
-        // Allow reading if parent document is public or user has access
-        allow read: if 
-          get(/databases/$(database)/documents/kids/$(kidId)).data.public == true ||
-          (
-            request.auth != null && 
-            exists(/databases/$(database)/documents/kids/$(kidId)) && (
-              get(/databases/$(database)/documents/kids/$(kidId)).data.parentId == request.auth.uid ||
-              (
-                get(/databases/$(database)/documents/kids/$(kidId)).data.sharedWith is list && 
-                request.auth.token.email in get(/databases/$(database)/documents/kids/$(kidId)).data.sharedWith
-              )
-            )
-          );
+        allow read: if kidIsPublic() || kidHasAccess();
+        allow write: if kidHasAccess();
+      }
 
-        // Allow write operations only for authenticated users with access
-        allow write: if 
-          request.auth != null && 
-          exists(/databases/$(database)/documents/kids/$(kidId)) && (
-            get(/databases/$(database)/documents/kids/$(kidId)).data.parentId == request.auth.uid ||
-            (
-              get(/databases/$(database)/documents/kids/$(kidId)).data.sharedWith is list && 
-              request.auth.token.email in get(/databases/$(database)/documents/kids/$(kidId)).data.sharedWith
-            )
-          );
+      // Goals / Sub-Accounts subcollection
+      match /goals/{goalId} {
+        allow read: if kidIsPublic() || kidHasAccess();
+        allow create, update: if kidHasAccess() || (
+          kidAllowsSubaccountTransfers() &&
+          request.resource.data.currentAmount is number &&
+          request.resource.data.currentAmount >= 0
+        );
+        allow delete: if kidHasAccess();
+      }
+
+      // Chores & Bounties subcollection
+      match /chores/{choreId} {
+        allow read: if kidIsPublic() || kidHasAccess();
+        allow create, delete: if kidHasAccess();
+        allow update: if kidHasAccess() || (
+          kidAllowsChoreCheckoff() &&
+          request.resource.data.reward == resource.data.reward &&
+          request.resource.data.title == resource.data.title &&
+          request.resource.data.status in ['open', 'pending_approval']
+        );
       }
     }
   }

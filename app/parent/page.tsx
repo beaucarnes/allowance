@@ -3,18 +3,18 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { auth, db } from '../lib/firebase'
-import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth'
-import { collection, query, where, getDocs, addDoc, updateDoc, doc, or } from 'firebase/firestore'
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
+import { collection, query, where, getDocs, or } from 'firebase/firestore'
 import Link from 'next/link'
 import AddKidForm from '../components/AddKidForm'
-
-function createSlug(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
 
 export default function ParentDashboard() {
   const [user, setUser] = useState<any>(null)
   const [kids, setKids] = useState<any[]>([])
+  const [subAccountStats, setSubAccountStats] = useState<
+    Record<string, { count: number; allocated: number }>
+  >({})
+  const [pendingChoreCount, setPendingChoreCount] = useState<Record<string, number>>({})
   const router = useRouter()
   const [showAddKidForm, setShowAddKidForm] = useState(false)
 
@@ -22,8 +22,7 @@ export default function ParentDashboard() {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       setUser(user)
       if (user) {
-        // Get a fresh token and create/refresh session
-        const idToken = await user.getIdToken(true)  // true forces token refresh
+        const idToken = await user.getIdToken(true)
         try {
           const response = await fetch('/api/auth/session', {
             method: 'POST',
@@ -52,37 +51,61 @@ export default function ParentDashboard() {
     try {
       const kidsQuery = query(
         collection(db, 'kids'),
-        or(
-          where('parentId', '==', parentId),
-          where('sharedWith', 'array-contains', email)
-        )
-      );
+        or(where('parentId', '==', parentId), where('sharedWith', 'array-contains', email))
+      )
 
-      const kidsSnapshot = await getDocs(kidsQuery);
-      const allKids = kidsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      const uniqueKids = Array.from(new Map(allKids.map(kid => [kid.id, kid])).values());
-      
-      setKids(uniqueKids);
+      const kidsSnapshot = await getDocs(kidsQuery)
+      const allKids = kidsSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+      const uniqueKids = Array.from(new Map(allKids.map((kid) => [kid.id, kid])).values())
+
+      setKids(uniqueKids)
+
+      // Fetch sub-account totals & pending chore counts for each kid
+      const statsMap: Record<string, { count: number; allocated: number }> = {}
+      const choresMap: Record<string, number> = {}
+
+      await Promise.all(
+        uniqueKids.map(async (kid: any) => {
+          try {
+            const goalsSnap = await getDocs(collection(db, 'kids', kid.id, 'goals'))
+            const activeGoals = goalsSnap.docs
+              .map((d) => d.data())
+              .filter((g) => !g.completed && g.status !== 'completed')
+            const allocated = activeGoals.reduce(
+              (sum, g) => sum + Number(g.currentAmount ?? g.savedAmount ?? 0),
+              0
+            )
+            statsMap[kid.id] = { count: activeGoals.length, allocated }
+
+            const choresSnap = await getDocs(collection(db, 'kids', kid.id, 'chores'))
+            const pending = choresSnap.docs.filter(
+              (d) => d.data()?.status === 'pending_approval'
+            ).length
+            choresMap[kid.id] = pending
+          } catch {
+            statsMap[kid.id] = { count: 0, allocated: 0 }
+            choresMap[kid.id] = 0
+          }
+        })
+      )
+
+      setSubAccountStats(statsMap)
+      setPendingChoreCount(choresMap)
     } catch (err) {
-      const error = err as { code?: string; message?: string };
-      console.error('Error fetching kids:', error);
+      console.error('Error fetching kids:', err)
     }
-  };
+  }
 
   const handleLogin = async () => {
     const provider = new GoogleAuthProvider()
-    
-    // Force account selection even when one account is available
     provider.setCustomParameters({
-      prompt: 'select_account'
+      prompt: 'select_account',
     })
 
     try {
       const result = await signInWithPopup(auth, provider)
       const idToken = await result.user.getIdToken()
-      
-      // Create session cookie
+
       const response = await fetch('/api/auth/session', {
         method: 'POST',
         headers: {
@@ -92,13 +115,8 @@ export default function ParentDashboard() {
         credentials: 'include',
       })
 
-      const data = await response.json()
-
       if (response.ok) {
-        // Wait a moment for the cookie to be set
-        await new Promise(resolve => setTimeout(resolve, 500))
-        
-        // If there's a redirect URL in the query params, go there
+        await new Promise((resolve) => setTimeout(resolve, 500))
         const urlParams = new URLSearchParams(window.location.search)
         const redirect = urlParams.get('redirect')
         if (redirect) {
@@ -115,108 +133,206 @@ export default function ParentDashboard() {
     }
   }
 
-  const handleAddKid = () => {
-    setShowAddKidForm(true)
-  }
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth)
-      router.push('/')
-    } catch (error) {
-      console.error('Error signing out:', error)
-    }
-  }
-
-  const handleTogglePublic = async (kidId: string, newPublicState: boolean) => {
-    try {
-      const kidRef = doc(db, 'kids', kidId)
-      await updateDoc(kidRef, {
-        public: newPublicState
-      })
-      // Refresh the list
-      fetchKids(user.uid, user.email || '')
-    } catch (error) {
-      console.error('Error toggling public state:', error)
-      alert('Failed to update settings. Please try again.')
-    }
-  }
-
   if (!user) {
     return (
-      <div className="text-center">
-        <h1 className="text-3xl font-bold mb-6">Parent Dashboard</h1>
+      <div className="max-w-md mx-auto my-12 bg-white p-8 rounded-3xl shadow-md border border-gray-200 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-3xl mx-auto mb-4">
+          🏦
+        </div>
+        <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Parent Bank Sign In</h1>
+        <p className="text-sm text-gray-600 mb-6">
+          Sign in with Google to manage your children&apos;s allowances, sub-account savings jars,
+          chores, and parent interest.
+        </p>
         <button
           onClick={handleLogin}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl shadow-sm transition-colors flex items-center justify-center gap-2"
         >
-          Sign in with Google
+          <span>Sign in with Google</span>
+          <span>→</span>
         </button>
       </div>
     )
   }
 
+  const totalFamilyBalance = kids.reduce((sum, k) => sum + Number(k.total || 0), 0)
+  const totalFamilySaved = Object.values(subAccountStats).reduce((s, v) => s + v.allocated, 0)
+  const totalFamilyChecking = totalFamilyBalance - totalFamilySaved
+
   return (
-    <div>
-      <div className="flex justify-between items-center mb-8">
+    <div className="space-y-8">
+      {/* Header Card */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Parent Dashboard</h1>
-          <p className="text-gray-600 mt-1">
-            Logged in as: {user.displayName} ({user.email})
+          <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full mb-1">
+            🏦 Bank of Mom &amp; Dad HQ
+          </span>
+          <h1 className="text-3xl font-extrabold text-gray-900">Parent Dashboard</h1>
+          <p className="text-sm text-gray-600 mt-0.5">
+            Signed in as {user.displayName} ({user.email})
           </p>
         </div>
-        <div className="flex space-x-4">
+
+        <div className="flex flex-wrap gap-2.5">
           <Link
             href="/parent/contributions"
-            className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+            className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold py-2.5 px-4 rounded-xl text-sm transition-colors"
           >
-            Show Contributions
+            📊 Parent Contributions
+          </Link>
+          <Link
+            href="/parent/ai-bot"
+            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold py-2.5 px-4 rounded-xl text-sm transition-colors"
+          >
+            🤖 Grokbot &amp; AI API
           </Link>
           <button
-            onClick={handleAddKid}
-            className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded"
+            onClick={() => setShowAddKidForm(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-5 rounded-xl text-sm shadow-sm transition-colors"
           >
-            Add New Kid
+            ＋ Add New Kid
           </button>
         </div>
       </div>
 
+      {/* Family Bank Summary Bar */}
+      {kids.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-sm">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+              Total Family Bank Liability
+            </span>
+            <p className="text-3xl font-extrabold mt-1">${totalFamilyBalance.toFixed(2)}</p>
+            <p className="text-xs text-slate-300 mt-1">
+              Across {kids.length} child account{kids.length === 1 ? '' : 's'}
+            </p>
+          </div>
+          <div className="bg-emerald-50 border border-emerald-200 p-5 rounded-2xl">
+            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
+              Total Available Checking
+            </span>
+            <p className="text-3xl font-extrabold text-emerald-900 mt-1">
+              ${totalFamilyChecking.toFixed(2)}
+            </p>
+            <p className="text-xs text-emerald-700 mt-1">Unallocated everyday spending money</p>
+          </div>
+          <div className="bg-purple-50 border border-purple-200 p-5 rounded-2xl">
+            <span className="text-xs font-semibold uppercase tracking-wider text-purple-700">
+              Total Earmarked in Sub-Accounts
+            </span>
+            <p className="text-3xl font-extrabold text-purple-900 mt-1">
+              ${totalFamilySaved.toFixed(2)}
+            </p>
+            <p className="text-xs text-purple-700 mt-1">Saved in goals &amp; savings jars</p>
+          </div>
+        </div>
+      )}
+
+      {/* Kids Grid */}
       {kids.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg shadow">
-          <p className="text-xl text-gray-600 mb-4">No kids added yet</p>
+        <div className="text-center py-12 bg-white rounded-2xl shadow-sm border border-gray-200">
+          <div className="text-4xl mb-3">👧 👦 🐷</div>
+          <p className="text-xl font-bold text-gray-900 mb-2">No kids added yet</p>
+          <p className="text-sm text-gray-600 mb-6">
+            Create your first child&apos;s account to start tracking allowances, sub-accounts, and
+            savings goals.
+          </p>
           <button
-            onClick={handleAddKid}
-            className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded"
+            onClick={() => setShowAddKidForm(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-xl"
           >
-            Add Your First Kid
+            ＋ Add Your First Kid
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {kids.map((kid: any) => (
-            <Link 
-              href={`/parent/kid/${kid.slug}`}
-              key={kid.id} 
-              className="block p-6 bg-white rounded-lg border border-gray-200 shadow-md hover:bg-gray-50"
-            >
-              <div className="flex justify-between items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {kids.map((kid: any) => {
+            const sub = subAccountStats[kid.id] || { count: 0, allocated: 0 }
+            const total = Number(kid.total || 0)
+            const checking = total - sub.allocated
+            const pendingChores = pendingChoreCount[kid.id] || 0
+
+            return (
+              <div
+                key={kid.id}
+                className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all p-6 flex flex-col justify-between"
+              >
                 <div>
-                  <h2 className="text-2xl font-bold mb-2">{kid.name}</h2>
-                  <p className="text-gray-600">Total: ${kid.total.toFixed(2)}</p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {kid.parentId === user.uid ? 'Owner' : 'Shared Access'}
-                  </p>
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h2 className="text-2xl font-extrabold text-gray-900">{kid.name}</h2>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {kid.parentId === user.uid ? 'Account Owner' : 'Shared Family Access'} · /
+                        {kid.slug}
+                      </p>
+                    </div>
+                    <span
+                      className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                        kid.public
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      {kid.public ? 'Public Link' : 'Private'}
+                    </span>
+                  </div>
+
+                  {/* Balances */}
+                  <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 mb-4 space-y-2">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs font-semibold uppercase text-gray-500">
+                        Total Balance
+                      </span>
+                      <span className="text-2xl font-extrabold text-gray-900">
+                        ${total.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-600 pt-2 border-t border-gray-200/70">
+                      <span>Checking: ${checking.toFixed(2)}</span>
+                      <span className="font-semibold text-purple-700">
+                        🐷 {sub.count} Sub-Account{sub.count === 1 ? '' : 's'} ($
+                        {sub.allocated.toFixed(2)})
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Badges */}
+                  <div className="flex flex-wrap gap-1.5 mb-5">
+                    {kid.weeklyAllowance > 0 && (
+                      <span className="text-xs px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-medium">
+                        💵 ${Number(kid.weeklyAllowance).toFixed(2)}/{kid.allowanceDay || 'wk'}
+                      </span>
+                    )}
+                    {kid.interestRateMonthly > 0 && (
+                      <span className="text-xs px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-medium">
+                        📈 {kid.interestRateMonthly}%/mo Interest
+                      </span>
+                    )}
+                    {pendingChores > 0 && (
+                      <span className="text-xs px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 font-bold">
+                        🔔 {pendingChores} Chore{pendingChores === 1 ? '' : 's'} to Approve
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <span className={`text-sm px-2 py-0.5 rounded ${
-                  kid.public 
-                    ? 'bg-green-100 text-green-800' 
-                    : 'bg-gray-100 text-gray-800'
-                }`}>
-                  {kid.public ? 'Public' : 'Private'}
-                </span>
+
+                <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-100">
+                  <Link
+                    href={`/parent/kid/${kid.slug}`}
+                    className="text-center py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors"
+                  >
+                    Manage Bank →
+                  </Link>
+                  <Link
+                    href={`/${kid.slug}`}
+                    className="text-center py-2.5 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold text-xs transition-colors"
+                  >
+                    Kid View (/{kid.slug})
+                  </Link>
+                </div>
               </div>
-            </Link>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -231,4 +347,3 @@ export default function ParentDashboard() {
     </div>
   )
 }
-

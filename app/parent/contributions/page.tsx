@@ -165,8 +165,14 @@ export default function Contributions() {
             }
             
             const description = data.description || ''
-            if (description.toLowerCase().includes('weekly allowance') || 
-                description.toLowerCase().includes('allowance')) {
+            const lowerDesc = description.toLowerCase()
+            if (lowerDesc.includes('weekly allowance') || 
+                lowerDesc.includes('allowance') ||
+                lowerDesc.includes('[interest]') ||
+                lowerDesc.includes('[chore]') ||
+                data.category === 'allowance' ||
+                data.category === 'interest' ||
+                data.category === 'chore') {
               return null
             }
             

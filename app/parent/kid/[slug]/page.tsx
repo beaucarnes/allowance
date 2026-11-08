@@ -3,33 +3,28 @@ import { getAdminAuth } from '@/app/lib/firebase-admin-app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { notFound, redirect } from 'next/navigation'
 import TransactionsList from '../../../components/TransactionsList'
-import KidTotal from '../../../components/KidTotal'
 import AddTransaction from '../../../components/AddTransaction'
+import SubAccountsManager from '../../../components/SubAccountsManager'
+import ParentBankTools from '../../../components/ParentBankTools'
+import SpendingAnalytics from '../../../components/SpendingAnalytics'
 import Link from 'next/link'
 
 interface KidData {
-  id: string;
-  name: string;
-  total: number;
-  parentId: string;
-  sharedWith: string[];
-  public?: boolean;
-  slug: string;
-  weeklyAllowance?: number;
-  allowanceDay?: string;
-}
-
-interface Transaction {
-  id: string;
-  amount: number;
-  description: string;
-  date: Date;
+  id: string
+  name: string
+  total: number
+  parentId: string
+  sharedWith: string[]
+  public?: boolean
+  slug: string
+  weeklyAllowance?: number
+  allowanceDay?: string
 }
 
 async function verifySession() {
   const cookieStore = cookies()
   const session = cookieStore.get('session')
-  
+
   if (!session) {
     return null
   }
@@ -49,34 +44,14 @@ async function verifySession() {
 
 async function getKidDataBySlug(slug: string): Promise<KidData | null> {
   const db = getFirestore()
-  const kidsSnapshot = await db.collection('kids')
-    .where('slug', '==', slug)
-    .get()
-  
+  const kidsSnapshot = await db.collection('kids').where('slug', '==', slug).get()
+
   if (kidsSnapshot.empty) {
     return null
   }
 
   const kid = kidsSnapshot.docs[0]
   return { id: kid.id, ...kid.data() } as KidData
-}
-
-async function getTransactions(kidId: string) {
-  const db = getFirestore()
-  const transactionsSnapshot = await db.collection('kids')
-    .doc(kidId)
-    .collection('transactions')
-    .orderBy('date', 'desc')
-    .limit(10)
-    .get()
-
-  return {
-    transactions: transactionsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      date: doc.data().date.toDate()
-    })) as Transaction[]
-  }
 }
 
 export default async function KidPage({ params }: { params: { slug: string } }) {
@@ -90,51 +65,73 @@ export default async function KidPage({ params }: { params: { slug: string } }) 
     notFound()
   }
 
-  const hasAccess = kid.parentId === user.uid || 
-                   (Array.isArray(kid.sharedWith) && kid.sharedWith.includes(user.email))
+  const hasAccess =
+    kid.parentId === user.uid ||
+    (Array.isArray(kid.sharedWith) && kid.sharedWith.includes(user.email))
 
   if (!hasAccess) {
     redirect('/access-denied')
   }
 
-  const transactions = await getTransactions(kid.id)
-
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">{kid.name}'s Dashboard</h1>
-        {kid.parentId === user.uid && (
+    <div className="space-y-8">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <div>
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+            <Link href="/parent" className="hover:text-blue-600 font-medium">
+              ← Parent Dashboard
+            </Link>
+            <span>/</span>
+            <span>{kid.name}</span>
+          </div>
+          <h1 className="text-3xl font-extrabold text-gray-900">{kid.name}&apos;s Bank Account</h1>
+        </div>
+        <div className="flex flex-wrap items-center gap-2.5">
           <Link
-            href={`/parent/kid/${kid.slug}/settings`}
-            className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
+            href={`/${kid.slug}`}
+            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold px-4 py-2 rounded-xl text-sm border border-indigo-200 transition-colors"
           >
-            Settings
+            👁 View Kid Dashboard (/{kid.slug})
           </Link>
-        )}
+          {kid.parentId === user.uid && (
+            <Link
+              href={`/parent/kid/${kid.slug}/settings`}
+              className="bg-gray-800 hover:bg-gray-900 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors"
+            >
+              ⚙ Settings
+            </Link>
+          )}
+        </div>
       </div>
 
-      <KidTotal kidId={kid.id} />
+      {/* Sub-Accounts, Checking Balance & Savings Goals Manager */}
+      <SubAccountsManager
+        kidId={kid.id}
+        kidName={kid.name}
+        weeklyAllowance={kid.weeklyAllowance || 0}
+      />
 
-      <div className="mt-8">
-        <h2 className="text-2xl font-bold mb-4">Add Transaction</h2>
+      {/* Parent Bank Tools: 1-Click Weekly Allowance, Parent-Paid Interest & Chores/Bounties */}
+      <ParentBankTools
+        kidId={kid.id}
+        kidName={kid.name}
+        weeklyAllowance={kid.weeklyAllowance || 0}
+        allowanceDay={kid.allowanceDay || 'Sunday'}
+      />
+
+      {/* Add Ledger Transaction */}
+      <div>
         <AddTransaction kidId={kid.id} />
       </div>
 
-      {kid.weeklyAllowance > 0 && (
-        <div className="mb-6 bg-blue-50 p-4 rounded-lg">
-          <p className="text-sm text-blue-600">
-            Weekly Allowance: ${kid.weeklyAllowance.toFixed(2)} every {kid.allowanceDay}
-          </p>
-        </div>
-      )}
+      {/* 30-Day Analytics & CSV Export */}
+      <SpendingAnalytics kidId={kid.id} kidName={kid.name} />
 
-      <div className="mt-8">
-        <h2 className="text-2xl font-bold mb-4">Transaction History</h2>
-        <TransactionsList 
-          kidId={kid.id} 
-          showActions={true}
-          initialTransactions={[]}
-        />
+      {/* Full Transaction History */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">Ledger Transaction History</h2>
+        <TransactionsList kidId={kid.id} showActions={true} initialTransactions={[]} />
       </div>
     </div>
   )
