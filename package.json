@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --import ./tests/resolve-ts.mjs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/allowance-api/*.test.ts"
   },
   "dependencies": {
     "@arcjet/decorate": "^1.0.0-alpha.33",
