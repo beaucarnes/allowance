@@ -3,23 +3,57 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { auth, db } from '../lib/firebase'
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, getDoc } from 'firebase/firestore'
 
 export default function PricingPage() {
   const [billing, setBilling] = useState<'annual' | 'monthly'>('annual')
   const [user, setUser] = useState<any>(null)
   const [currentTier, setCurrentTier] = useState<'free' | 'pro'>('free')
+  const [hasStripeCustomer, setHasStripeCustomer] = useState(false)
   const [activating, setActivating] = useState(false)
+  const [openingPortal, setOpeningPortal] = useState(false)
   const [banner, setBanner] = useState<string | null>(null)
 
   useEffect(() => {
+    // Check if returning from Stripe Checkout
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const sessionId = params.get('session_id')
+      if (params.get('success') === '1' && sessionId) {
+        fetch('/api/stripe/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId }),
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.ok) {
+              setCurrentTier('pro')
+              setHasStripeCustomer(true)
+              setBanner(
+                '🎉 Welcome to Family Bank Pro! All Pro features (Unlimited Sub-Accounts, Auto-Split Rules, Parent Interest, Chores & AI Bot API) are now unlocked.'
+              )
+            }
+          })
+          .catch((e) => console.error('Verification error:', e))
+      } else if (params.get('canceled') === '1') {
+        setBanner('Checkout was canceled — you were not charged.')
+      }
+    }
+
     const unsub = auth.onAuthStateChanged(async (u) => {
       setUser(u)
       if (u) {
         try {
           const snap = await getDoc(doc(db, 'subscriptions', u.uid))
-          if (snap.exists() && snap.data()?.tier === 'pro') {
-            setCurrentTier('pro')
+          if (snap.exists()) {
+            const data = snap.data()
+            if (data?.tier === 'pro') {
+              setCurrentTier('pro')
+            }
+            if (data?.stripeCustomerId) {
+              setHasStripeCustomer(true)
+            }
           }
         } catch (err) {
           console.error('Error checking subscription:', err)
@@ -30,41 +64,58 @@ export default function PricingPage() {
   }, [])
 
   const handleUpgrade = async () => {
-    const stripeLink = process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK
-    if (stripeLink) {
-      window.location.href = stripeLink
-      return
-    }
-
     if (!user) {
-      window.location.href = '/parent?upgrade=pro'
+      window.location.href = '/parent?redirect=/pricing'
       return
     }
 
     setActivating(true)
     try {
-      const trialEnd = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
-      await setDoc(
-        doc(db, 'subscriptions', user.uid),
-        {
-          uid: user.uid,
-          email: user.email || '',
-          tier: 'pro',
-          billingCycle: billing,
-          trialEndsAt: trialEnd,
-          updatedAt: serverTimestamp(),
+      const idToken = await user.getIdToken()
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
         },
-        { merge: true }
-      )
-      setCurrentTier('pro')
-      setBanner(
-        '🎉 Family Bank Pro is now active on your account! All Pro features (Unlimited Sub-Accounts, Parent Interest, Chores & AI Bot API) are unlocked.'
-      )
+        body: JSON.stringify({ billing }),
+      })
+
+      const data = await res.json()
+      if (res.ok && data.url) {
+        window.location.href = data.url
+        return
+      }
+      alert(data.error || 'Could not start Stripe Checkout. Please try again.')
     } catch (err) {
-      console.error('Error activating Pro plan:', err)
-      alert('Could not activate right now. Please make sure you are signed in.')
+      console.error('Error starting Stripe checkout:', err)
+      alert('Could not start checkout right now. Please make sure you are signed in.')
     } finally {
       setActivating(false)
+    }
+  }
+
+  const handleManageBilling = async () => {
+    if (!user) return
+    setOpeningPortal(true)
+    try {
+      const idToken = await user.getIdToken()
+      const res = await fetch('/api/stripe/portal', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      })
+      const data = await res.json()
+      if (res.ok && data.url) {
+        window.location.href = data.url
+        return
+      }
+      alert(data.error || 'Could not open Stripe billing portal.')
+    } catch (err) {
+      console.error('Error opening billing portal:', err)
+    } finally {
+      setOpeningPortal(false)
     }
   }
 
@@ -80,7 +131,8 @@ export default function PricingPage() {
         </h1>
         <p className="text-lg text-gray-600">
           Every core allowance tracking feature is <strong>100% free forever</strong>. Upgrade to{' '}
-          <strong>Family Bank Pro</strong> to unlock unlimited sub-account jars, auto-split rules,
+          <strong>Family Bank Pro</strong> for just <strong>$2.99/mo</strong> (or{' '}
+          <strong>$19/year</strong>) to unlock unlimited sub-account jars, auto-split rules,
           parent-paid compound interest, chores &amp; bounties, and AI voice/bot banking.
         </p>
 
@@ -94,7 +146,7 @@ export default function PricingPage() {
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            Monthly ($4.99/mo)
+            Monthly ($2.99/mo)
           </button>
           <button
             onClick={() => setBilling('annual')}
@@ -104,7 +156,7 @@ export default function PricingPage() {
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            <span>Annual ($39/yr)</span>
+            <span>Annual ($19/yr)</span>
             <span
               className={`text-[11px] px-2 py-0.5 rounded-full font-extrabold ${
                 billing === 'annual'
@@ -112,7 +164,7 @@ export default function PricingPage() {
                   : 'bg-emerald-100 text-emerald-800'
               }`}
             >
-              Save 35%
+              Save 47%
             </span>
           </button>
         </div>
@@ -169,13 +221,17 @@ export default function PricingPage() {
               <div className="flex items-start gap-2.5">
                 <span className="text-emerald-600 font-bold">✓</span>
                 <span>
-                  <strong>Kid-Friendly Dashboards</strong> (custom <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">/[slug]</code> URLs with public/private privacy controls)
+                  <strong>Kid-Friendly Dashboards</strong> (custom{' '}
+                  <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">/[slug]</code> URLs with
+                  public/private privacy controls)
                 </span>
               </div>
               <div className="flex items-start gap-2.5">
                 <span className="text-emerald-600 font-bold">✓</span>
                 <span>
-                  <strong>Co-Parent &amp; Grandparent Sharing</strong> (<code className="text-xs bg-gray-100 px-1 py-0.5 rounded">sharedWith</code> access)
+                  <strong>Co-Parent &amp; Grandparent Sharing</strong> (
+                  <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">sharedWith</code>{' '}
+                  access)
                 </span>
               </div>
               <div className="flex items-start gap-2.5">
@@ -217,14 +273,14 @@ export default function PricingPage() {
 
             <div className="flex items-baseline gap-2 mb-1">
               <span className="text-5xl font-extrabold">
-                {billing === 'annual' ? '$3.25' : '$4.99'}
+                {billing === 'annual' ? '$1.58' : '$2.99'}
               </span>
               <span className="text-slate-300 font-medium">/ month</span>
             </div>
             <p className="text-xs text-emerald-300 mb-6 font-medium">
               {billing === 'annual'
-                ? 'Billed as $39/year (saves 35% vs monthly) · 14-day free trial'
-                : 'Billed monthly at $4.99/mo · Cancel anytime'}
+                ? 'Billed as $19/year (saves 47% vs monthly) · 14-day free trial'
+                : 'Billed monthly at $2.99/mo · 14-day free trial · Cancel anytime'}
             </p>
 
             <div className="border-t border-white/10 pt-6 space-y-3.5 text-sm text-slate-100">
@@ -262,8 +318,8 @@ export default function PricingPage() {
               <div className="flex items-start gap-2.5">
                 <span className="text-emerald-400 font-bold">★</span>
                 <span>
-                  <strong>AI Banker &amp; Grokbot / Siri / ChatGPT API</strong> (add transactions &amp;
-                  query balances by voice or AI chat)
+                  <strong>AI Banker &amp; Grokbot / Siri / ChatGPT API</strong> (add transactions
+                  &amp; query balances by voice or AI chat)
                 </span>
               </div>
               <div className="flex items-start gap-2.5">
@@ -275,22 +331,37 @@ export default function PricingPage() {
             </div>
           </div>
 
-          <div className="mt-8 pt-6 border-t border-white/10">
+          <div className="mt-8 pt-6 border-t border-white/10 space-y-2.5">
             {currentTier === 'pro' ? (
-              <div className="w-full text-center py-3.5 px-6 rounded-xl bg-emerald-500 text-slate-950 font-extrabold">
-                ✓ Family Bank Pro Active
-              </div>
+              <>
+                <div className="w-full text-center py-3.5 px-6 rounded-xl bg-emerald-500 text-slate-950 font-extrabold">
+                  ✓ Family Bank Pro Active
+                </div>
+                {hasStripeCustomer && (
+                  <button
+                    onClick={handleManageBilling}
+                    disabled={openingPortal}
+                    className="w-full py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors"
+                  >
+                    {openingPortal
+                      ? 'Opening Stripe Billing Portal...'
+                      : 'Manage Subscription in Stripe →'}
+                  </button>
+                )}
+              </>
             ) : (
               <button
                 onClick={handleUpgrade}
                 disabled={activating}
                 className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-blue-500 to-emerald-400 hover:from-blue-600 hover:to-emerald-500 text-slate-950 font-extrabold transition-all shadow-lg"
               >
-                {activating ? 'Activating...' : 'Start 14-Day Free Pro Trial →'}
+                {activating
+                  ? 'Redirecting to Stripe...'
+                  : `Start 14-Day Free Pro Trial (${billing === 'annual' ? '$19/yr' : '$2.99/mo'}) →`}
               </button>
             )}
-            <p className="text-center text-xs text-slate-400 mt-2">
-              No debit card fees · No per-child fees · One plan covers your whole family
+            <p className="text-center text-xs text-slate-400">
+              Secured by Stripe · No per-child fees · One plan covers your whole family
             </p>
           </div>
         </div>
@@ -299,7 +370,7 @@ export default function PricingPage() {
       {/* Why Parents Pay for TrackAllowance vs Debit Card Apps */}
       <div className="bg-white rounded-3xl border border-gray-200 p-8 shadow-sm">
         <h3 className="text-2xl font-bold text-gray-900 mb-6 text-center">
-          Why Families Choose TrackAllowance Over $10/mo Kid Debit Card Apps
+          Why Families Choose TrackAllowance Over $60–$120/yr Kid Debit Card Apps
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
           <div className="p-5 rounded-2xl bg-blue-50/50 border border-blue-100">

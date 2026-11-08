@@ -4,7 +4,17 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { auth, db } from '../lib/firebase'
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
-import { collection, query, where, getDocs, or } from 'firebase/firestore'
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  or,
+  doc,
+  addDoc,
+  updateDoc,
+  serverTimestamp,
+} from 'firebase/firestore'
 import Link from 'next/link'
 import AddKidForm from '../components/AddKidForm'
 
@@ -17,6 +27,13 @@ export default function ParentDashboard() {
   const [pendingChoreCount, setPendingChoreCount] = useState<Record<string, number>>({})
   const router = useRouter()
   const [showAddKidForm, setShowAddKidForm] = useState(false)
+
+  // Inline quick transaction state per kid card
+  const [quickTxKidId, setQuickTxKidId] = useState<string | null>(null)
+  const [quickType, setQuickType] = useState<'debit' | 'credit'>('debit')
+  const [quickAmount, setQuickAmount] = useState('')
+  const [quickDesc, setQuickDesc] = useState('')
+  const [quickSaving, setQuickSaving] = useState(false)
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
@@ -60,7 +77,6 @@ export default function ParentDashboard() {
 
       setKids(uniqueKids)
 
-      // Fetch sub-account totals & pending chore counts for each kid
       const statsMap: Record<string, { count: number; allocated: number }> = {}
       const choresMap: Record<string, number> = {}
 
@@ -93,6 +109,39 @@ export default function ParentDashboard() {
       setPendingChoreCount(choresMap)
     } catch (err) {
       console.error('Error fetching kids:', err)
+    }
+  }
+
+  const handleQuickTransaction = async (e: React.FormEvent, kid: any) => {
+    e.preventDefault()
+    const amt = parseFloat(quickAmount)
+    if (!amt || amt <= 0 || !quickDesc.trim()) return
+
+    const finalAmount = quickType === 'debit' ? -Math.abs(amt) : Math.abs(amt)
+    const nextTotal = Number((Number(kid.total || 0) + finalAmount).toFixed(2))
+
+    setQuickSaving(true)
+    try {
+      await addDoc(collection(db, 'kids', kid.id, 'transactions'), {
+        amount: finalAmount,
+        description: quickDesc.trim(),
+        date: serverTimestamp(),
+        parentName: user?.displayName || 'Parent',
+        parentEmail: user?.email || '',
+      })
+      await updateDoc(doc(db, 'kids', kid.id), {
+        total: nextTotal,
+      })
+
+      setKids((prev) => prev.map((k) => (k.id === kid.id ? { ...k, total: nextTotal } : k)))
+      setQuickTxKidId(null)
+      setQuickAmount('')
+      setQuickDesc('')
+    } catch (err) {
+      console.error('Error adding quick transaction:', err)
+      alert('Failed to record transaction.')
+    } finally {
+      setQuickSaving(false)
     }
   }
 
@@ -251,6 +300,7 @@ export default function ParentDashboard() {
             const total = Number(kid.total || 0)
             const checking = total - sub.allocated
             const pendingChores = pendingChoreCount[kid.id] || 0
+            const isQuickOpen = quickTxKidId === kid.id
 
             return (
               <div
@@ -260,7 +310,12 @@ export default function ParentDashboard() {
                 <div>
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <h2 className="text-2xl font-extrabold text-gray-900">{kid.name}</h2>
+                      <Link
+                        href={`/parent/kid/${kid.slug}`}
+                        className="text-2xl font-extrabold text-gray-900 hover:text-blue-600 transition-colors"
+                      >
+                        {kid.name}
+                      </Link>
                       <p className="text-xs text-gray-500 mt-0.5">
                         {kid.parentId === user.uid ? 'Account Owner' : 'Shared Family Access'} · /
                         {kid.slug}
@@ -297,7 +352,7 @@ export default function ParentDashboard() {
                   </div>
 
                   {/* Badges */}
-                  <div className="flex flex-wrap gap-1.5 mb-5">
+                  <div className="flex flex-wrap gap-1.5 mb-4">
                     {kid.weeklyAllowance > 0 && (
                       <span className="text-xs px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-medium">
                         💵 ${Number(kid.weeklyAllowance).toFixed(2)}/{kid.allowanceDay || 'wk'}
@@ -314,6 +369,112 @@ export default function ParentDashboard() {
                       </span>
                     )}
                   </div>
+
+                  {/* Inline Quick Transaction Drawer */}
+                  {isQuickOpen ? (
+                    <form
+                      onSubmit={(e) => handleQuickTransaction(e, kid)}
+                      className="mb-4 p-3.5 rounded-xl bg-blue-50/60 border border-blue-200 space-y-2.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="inline-flex p-0.5 bg-white rounded-lg border border-gray-200 text-xs font-bold">
+                          <button
+                            type="button"
+                            onClick={() => setQuickType('debit')}
+                            className={`px-2.5 py-1 rounded-md ${
+                              quickType === 'debit'
+                                ? 'bg-red-600 text-white'
+                                : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                          >
+                            − Spend
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setQuickType('credit')}
+                            className={`px-2.5 py-1 rounded-md ${
+                              quickType === 'credit'
+                                ? 'bg-emerald-600 text-white'
+                                : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                          >
+                            ＋ Add $
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setQuickTxKidId(null)}
+                          className="text-xs text-gray-400 hover:text-gray-600"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          placeholder="$0.00"
+                          value={quickAmount}
+                          onChange={(e) => setQuickAmount(e.target.value)}
+                          className="col-span-1 border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm font-bold bg-white"
+                          required
+                        />
+                        <input
+                          type="text"
+                          placeholder="What for?"
+                          value={quickDesc}
+                          onChange={(e) => setQuickDesc(e.target.value)}
+                          className="col-span-2 border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm bg-white"
+                          required
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={quickSaving}
+                        className={`w-full py-2 rounded-lg text-white text-xs font-extrabold ${
+                          quickType === 'credit'
+                            ? 'bg-emerald-600 hover:bg-emerald-700'
+                            : 'bg-red-600 hover:bg-red-700'
+                        }`}
+                      >
+                        {quickSaving
+                          ? 'Saving...'
+                          : quickType === 'credit'
+                          ? '＋ Record Credit'
+                          : '− Record Spend'}
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuickTxKidId(kid.id)
+                          setQuickType('debit')
+                          setQuickAmount('')
+                          setQuickDesc('')
+                        }}
+                        className="py-2 px-3 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold text-xs transition-colors"
+                      >
+                        − Quick Spend
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuickTxKidId(kid.id)
+                          setQuickType('credit')
+                          setQuickAmount('')
+                          setQuickDesc('')
+                        }}
+                        className="py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-xs transition-colors"
+                      >
+                        ＋ Quick Add $
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-100">

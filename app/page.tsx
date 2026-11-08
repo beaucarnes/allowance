@@ -286,7 +286,7 @@ export default function Home() {
           </h2>
           <p className="text-gray-600 text-sm mt-2">
             All classic allowance tracking features are free forever. Upgrade to{' '}
-            <strong>Family Bank Pro</strong> ($3.25/mo billed annually) for unlimited sub-accounts,
+            <strong>Family Bank Pro</strong> ($2.99/mo or $19/year) for unlimited sub-accounts,
             auto-split rules, chores, compound interest, and AI bot access.
           </p>
         </div>
@@ -318,10 +318,10 @@ export default function Home() {
             <div>
               <div className="flex justify-between items-center mb-2">
                 <h3 className="text-xl font-bold text-gray-900">Family Bank Pro</h3>
-                <span className="text-lg font-extrabold text-blue-700">$3.25/mo</span>
+                <span className="text-lg font-extrabold text-blue-700">$2.99/mo</span>
               </div>
               <p className="text-xs text-blue-700 font-medium mb-4">
-                Billed $39/year (or $4.99/mo) · 14-day free trial
+                Or just $19/year ($1.58/mo — save 47%) · 14-day free trial
               </p>
               <ul className="space-y-2 text-sm text-gray-800 mb-6">
                 <li>★ Unlimited Sub-Accounts &amp; Auto-Split % Rules</li>

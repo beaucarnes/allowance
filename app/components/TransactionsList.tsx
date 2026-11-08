@@ -2,73 +2,93 @@
 
 import { useState, useEffect } from 'react'
 import { db } from '../lib/firebase'
-import { collection, query, orderBy, limit, onSnapshot, startAfter, doc, getDoc, getDocs, deleteDoc, updateDoc, increment } from 'firebase/firestore'
+import {
+  collection,
+  query,
+  orderBy,
+  limit,
+  onSnapshot,
+  startAfter,
+  doc,
+  getDocs,
+  deleteDoc,
+  updateDoc,
+  increment,
+} from 'firebase/firestore'
 
 interface TransactionsListProps {
-  kidId: string;
-  showActions?: boolean;
-  isPublic?: boolean;
-  initialTransactions?: Transaction[];
+  kidId: string
+  showActions?: boolean
+  isPublic?: boolean
+  initialTransactions?: Transaction[]
 }
 
 interface Transaction {
-  id: string;
-  amount: number;
-  description: string;
-  date: Date;
+  id: string
+  amount: number
+  description: string
+  date: Date
+  parentName?: string
 }
 
-export default function TransactionsList({ 
-  kidId, 
-  showActions = false, 
-  isPublic = false,
-  initialTransactions = [] 
+export default function TransactionsList({
+  kidId,
+  showActions = false,
+  initialTransactions = [],
 }: TransactionsListProps) {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
   const [isLoading, setIsLoading] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
-  const [pageData, setPageData] = useState<{
-    docs: Transaction[];
-    lastVisible: any;
-    hasMore: boolean;
-  }[]>([])
+  const [pageData, setPageData] = useState<
+    {
+      docs: Transaction[]
+      lastVisible: any
+      hasMore: boolean
+    }[]
+  >([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({
     amount: '',
-    description: ''
+    description: '',
   })
+  const [filterType, setFilterType] = useState<'all' | 'credit' | 'debit'>('all')
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     setIsLoading(true)
     const transactionsRef = collection(db, 'kids', kidId, 'transactions')
-    const q = query(
-      transactionsRef,
-      orderBy('date', 'desc'),
-      limit(10)
+    const q = query(transactionsRef, orderBy('date', 'desc'), limit(15))
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const docs = snapshot.docs.map((d) => ({
+          id: d.id,
+          amount: Number(d.data().amount || 0),
+          description: d.data().description || '',
+          date: d.data().date?.toDate() || new Date(),
+          parentName: d.data().parentName || undefined,
+        }))
+
+        const hasMoreDocs = !snapshot.empty && snapshot.docs.length === 15
+        setTransactions(docs)
+        setHasMore(hasMoreDocs)
+        setCurrentPage(1)
+        setPageData([
+          {
+            docs,
+            lastVisible: snapshot.docs[snapshot.docs.length - 1],
+            hasMore: hasMoreDocs,
+          },
+        ])
+        setIsLoading(false)
+      },
+      (error) => {
+        console.error('Error listening to transactions:', error)
+        setIsLoading(false)
+      }
     )
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        amount: doc.data().amount,
-        description: doc.data().description,
-        date: doc.data().date?.toDate() || new Date()
-      }))
-
-      const hasMoreDocs = !snapshot.empty && snapshot.docs.length === 10
-      setTransactions(docs)
-      setHasMore(hasMoreDocs)
-      setPageData([{
-        docs,
-        lastVisible: snapshot.docs[snapshot.docs.length - 1],
-        hasMore: hasMoreDocs
-      }])
-      setIsLoading(false)
-    }, (error) => {
-      console.error('Error listening to transactions:', error)
-      setIsLoading(false)
-    })
 
     return () => unsubscribe()
   }, [kidId])
@@ -80,7 +100,7 @@ export default function TransactionsList({
       if (prevPageData) {
         setTransactions(prevPageData.docs)
         setHasMore(prevPageData.hasMore)
-        setCurrentPage(prev => prev - 1)
+        setCurrentPage((prev) => prev - 1)
         return
       }
     }
@@ -95,27 +115,31 @@ export default function TransactionsList({
         transactionsRef,
         orderBy('date', 'desc'),
         startAfter(lastVisible),
-        limit(10)
+        limit(15)
       )
 
       try {
         const snapshot = await getDocs(q)
-        const docs = snapshot.docs.map(doc => ({
-          id: doc.id,
-          amount: doc.data().amount,
-          description: doc.data().description,
-          date: doc.data().date?.toDate() || new Date()
+        const docs = snapshot.docs.map((d) => ({
+          id: d.id,
+          amount: Number(d.data().amount || 0),
+          description: d.data().description || '',
+          date: d.data().date?.toDate() || new Date(),
+          parentName: d.data().parentName || undefined,
         }))
 
-        const hasMoreDocs = !snapshot.empty && snapshot.docs.length === 10
+        const hasMoreDocs = !snapshot.empty && snapshot.docs.length === 15
         setTransactions(docs)
         setHasMore(hasMoreDocs)
-        setPageData(prev => [...prev, {
-          docs,
-          lastVisible: snapshot.docs[snapshot.docs.length - 1],
-          hasMore: hasMoreDocs
-        }])
-        setCurrentPage(prev => prev + 1)
+        setPageData((prev) => [
+          ...prev,
+          {
+            docs,
+            lastVisible: snapshot.docs[snapshot.docs.length - 1],
+            hasMore: hasMoreDocs,
+          },
+        ])
+        setCurrentPage((prev) => prev + 1)
       } catch (error) {
         console.error('Error loading next page:', error)
       } finally {
@@ -128,13 +152,10 @@ export default function TransactionsList({
     if (!confirm('Are you sure you want to delete this transaction?')) return
 
     try {
-      // Delete the transaction
       await deleteDoc(doc(db, 'kids', kidId, 'transactions', transactionId))
-
-      // Update the kid's total
       const kidRef = doc(db, 'kids', kidId)
       await updateDoc(kidRef, {
-        total: increment(-amount)
+        total: increment(-amount),
       })
     } catch (error) {
       console.error('Error deleting transaction:', error)
@@ -149,16 +170,14 @@ export default function TransactionsList({
       const newAmount = parseFloat(editForm.amount)
       const amountDiff = newAmount - oldAmount
 
-      // Update the transaction
       await updateDoc(doc(db, 'kids', kidId, 'transactions', transactionId), {
         amount: newAmount,
-        description: editForm.description
+        description: editForm.description,
       })
 
-      // Update the kid's total
       const kidRef = doc(db, 'kids', kidId)
       await updateDoc(kidRef, {
-        total: increment(amountDiff)
+        total: increment(amountDiff),
       })
 
       setEditingId(null)
@@ -168,140 +187,205 @@ export default function TransactionsList({
     }
   }
 
+  const filteredTransactions = transactions.filter((t) => {
+    if (filterType === 'credit' && t.amount < 0) return false
+    if (filterType === 'debit' && t.amount >= 0) return false
+    if (
+      searchQuery.trim() &&
+      !t.description.toLowerCase().includes(searchQuery.trim().toLowerCase())
+    ) {
+      return false
+    }
+    return true
+  })
+
   if (isLoading && transactions.length === 0) {
-    return <div>Loading transactions...</div>
+    return <div className="py-6 text-center text-gray-500 text-sm">Loading transactions...</div>
   }
 
   return (
-    <div>
-      <table className="min-w-full">
-        <thead>
-          <tr>
-            <th className="text-left py-2">Date</th>
-            <th className="text-left py-2">Description</th>
-            <th className="text-right py-2">Amount</th>
-            {showActions && <th className="text-right py-2">Actions</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {transactions.map((transaction) => (
-            <tr key={transaction.id} className="border-t">
-              <td className="py-2">
-                {transaction.date.toLocaleDateString()}
-              </td>
-              <td className="py-2">
-                {editingId === transaction.id ? (
-                  <input
-                    type="text"
-                    value={editForm.description}
-                    onChange={(e) => setEditForm(prev => ({
-                      ...prev,
-                      description: e.target.value
-                    }))}
-                    className="w-full border rounded px-2 py-1"
-                  />
-                ) : transaction.description}
-              </td>
-              <td className={`py-2 text-right ${
-                transaction.amount >= 0 ? 'text-green-600' : 'text-red-600'
-              }`}>
-                {editingId === transaction.id ? (
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editForm.amount}
-                    onChange={(e) => setEditForm(prev => ({
-                      ...prev,
-                      amount: e.target.value
-                    }))}
-                    className="w-full border rounded px-2 py-1"
-                  />
-                ) : `$${transaction.amount.toFixed(2)}`}
-              </td>
-              {showActions && (
-                <td className="py-2 text-right space-x-2">
+    <div className="space-y-4">
+      {/* Filter & Search Bar */}
+      {transactions.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2">
+          <div className="inline-flex p-1 bg-gray-100 rounded-xl self-start">
+            {(
+              [
+                { id: 'all', label: 'All' },
+                { id: 'credit', label: '＋ Credits' },
+                { id: 'debit', label: '− Debits' },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setFilterType(tab.id)}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                  filterType === tab.id
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search description..."
+            className="border border-gray-200 rounded-xl px-3.5 py-1.5 text-sm text-gray-800 focus:border-blue-500 outline-none sm:w-64"
+          />
+        </div>
+      )}
+
+      {/* Transactions List */}
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 text-xs uppercase tracking-wider text-gray-400">
+              <th className="text-left py-2.5 font-semibold">Date</th>
+              <th className="text-left py-2.5 font-semibold">Description</th>
+              <th className="text-right py-2.5 font-semibold">Amount</th>
+              {showActions && <th className="text-right py-2.5 font-semibold">Actions</th>}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {filteredTransactions.map((transaction) => (
+              <tr key={transaction.id} className="hover:bg-gray-50/70 transition-colors">
+                <td className="py-3 pr-3 whitespace-nowrap text-xs text-gray-500">
+                  {transaction.date.toLocaleDateString()}
+                </td>
+                <td className="py-3 pr-3 font-medium text-gray-900">
                   {editingId === transaction.id ? (
-                    <>
-                      <button
-                        onClick={() => handleEdit(transaction.id, transaction.amount)}
-                        className="text-green-600 hover:text-green-700"
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => setEditingId(null)}
-                        className="text-gray-600 hover:text-gray-700"
-                      >
-                        Cancel
-                      </button>
-                    </>
+                    <input
+                      type="text"
+                      value={editForm.description}
+                      onChange={(e) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          description: e.target.value,
+                        }))
+                      }
+                      className="w-full border border-gray-300 rounded-lg px-2.5 py-1 text-sm"
+                    />
                   ) : (
-                    <>
-                      <button
-                        onClick={() => {
-                          setEditingId(transaction.id)
-                          setEditForm({
-                            amount: transaction.amount.toString(),
-                            description: transaction.description
-                          })
-                        }}
-                        className="text-blue-600 hover:text-blue-700"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(transaction.id, transaction.amount)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        Delete
-                      </button>
-                    </>
+                    <span>{transaction.description}</span>
                   )}
                 </td>
-              )}
-            </tr>
-          ))}
-          {transactions.length === 0 && (
-            <tr>
-              <td colSpan={3} className="text-center py-4 text-gray-500">
-                No transactions found
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+                <td className="py-3 text-right whitespace-nowrap">
+                  {editingId === transaction.id ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.amount}
+                      onChange={(e) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          amount: e.target.value,
+                        }))
+                      }
+                      className="w-28 border border-gray-300 rounded-lg px-2.5 py-1 text-right text-sm"
+                    />
+                  ) : (
+                    <span
+                      className={`inline-block font-extrabold px-2.5 py-0.5 rounded-lg text-xs ${
+                        transaction.amount >= 0
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-red-50 text-red-700'
+                      }`}
+                    >
+                      {transaction.amount >= 0
+                        ? `+$${transaction.amount.toFixed(2)}`
+                        : `-$${Math.abs(transaction.amount).toFixed(2)}`}
+                    </span>
+                  )}
+                </td>
+                {showActions && (
+                  <td className="py-3 pl-3 text-right whitespace-nowrap space-x-2 text-xs">
+                    {editingId === transaction.id ? (
+                      <>
+                        <button
+                          onClick={() => handleEdit(transaction.id, transaction.amount)}
+                          className="font-bold text-emerald-600 hover:text-emerald-700"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="font-medium text-gray-500 hover:text-gray-700"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => {
+                            setEditingId(transaction.id)
+                            setEditForm({
+                              amount: transaction.amount.toString(),
+                              description: transaction.description,
+                            })
+                          }}
+                          className="font-semibold text-blue-600 hover:text-blue-800"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(transaction.id, transaction.amount)}
+                          className="font-semibold text-red-500 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </td>
+                )}
+              </tr>
+            ))}
+            {filteredTransactions.length === 0 && (
+              <tr>
+                <td colSpan={showActions ? 4 : 3} className="text-center py-8 text-gray-400">
+                  No transactions found
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {(currentPage > 1 || hasMore) && (
-        <div className="mt-4 flex items-center justify-between">
+        <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
           <button
             onClick={() => loadPage('prev')}
             disabled={currentPage <= 1 || isLoading}
-            className={`px-4 py-2 text-sm ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold border ${
               currentPage <= 1
-                ? 'text-gray-400 cursor-not-allowed'
-                : 'text-blue-500 hover:text-blue-700'
+                ? 'text-gray-300 border-gray-100 cursor-not-allowed'
+                : 'text-gray-700 border-gray-200 hover:bg-gray-50'
             }`}
           >
-            Previous
+            ← Previous
           </button>
 
-          <span className="text-sm text-gray-600">
-            Page {currentPage}
-          </span>
+          <span className="text-xs font-semibold text-gray-500">Page {currentPage}</span>
 
           <button
             onClick={() => loadPage('next')}
             disabled={!hasMore || isLoading}
-            className={`px-4 py-2 text-sm ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold border ${
               !hasMore
-                ? 'text-gray-400 cursor-not-allowed'
-                : 'text-blue-500 hover:text-blue-700'
+                ? 'text-gray-300 border-gray-100 cursor-not-allowed'
+                : 'text-gray-700 border-gray-200 hover:bg-gray-50'
             }`}
           >
-            Next
+            Next →
           </button>
         </div>
       )}
     </div>
   )
-} 
+}
