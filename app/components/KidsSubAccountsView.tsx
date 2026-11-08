@@ -79,7 +79,7 @@ const EMOJI_CHOICES = ['🎯', '🚲', '🎮', '🧱', '🐷', '❤️', '📈',
 export default function KidsSubAccountsView({
   kidId,
   kidName,
-  allowTransfers = true,
+  allowTransfers = false,
 }: KidsSubAccountsViewProps) {
   const [totalBalance, setTotalBalance] = useState<number | null>(null)
   const [canKidTransfer, setCanKidTransfer] = useState<boolean>(allowTransfers)
@@ -109,7 +109,7 @@ export default function KidsSubAccountsView({
       if (snap.exists()) {
         const data = snap.data()
         setTotalBalance(Number(data?.total || 0))
-        setCanKidTransfer(data?.allowKidSubaccountTransfers !== false)
+        setCanKidTransfer(Boolean(allowTransfers && data?.allowKidSubaccountTransfers !== false))
       }
     })
 
@@ -148,7 +148,7 @@ export default function KidsSubAccountsView({
       unsubKid()
       unsubGoals()
     }
-  }, [kidId])
+  }, [kidId, allowTransfers])
 
   if (loading || totalBalance === null) {
     return (

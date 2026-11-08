@@ -16,9 +16,10 @@ import { Chore } from '../lib/types'
 interface KidsBankToolsProps {
   kidId: string
   kidName: string
+  canEdit?: boolean
 }
 
-export default function KidsBankTools({ kidId, kidName }: KidsBankToolsProps) {
+export default function KidsBankTools({ kidId, kidName, canEdit = false }: KidsBankToolsProps) {
   const [totalBalance, setTotalBalance] = useState(0)
   const [weeklyAllowance, setWeeklyAllowance] = useState(5)
   const [interestRateMonthly, setInterestRateMonthly] = useState(2)
@@ -137,7 +138,7 @@ export default function KidsBankTools({ kidId, kidName }: KidsBankToolsProps) {
                   <span className="px-3 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold whitespace-nowrap">
                     ⏳ Waiting for Parent
                   </span>
-                ) : (
+                ) : canEdit ? (
                   <button
                     disabled={isBusy === c.id}
                     onClick={() => handleMarkDone(c)}
@@ -145,6 +146,10 @@ export default function KidsBankTools({ kidId, kidName }: KidsBankToolsProps) {
                   >
                     🎉 I Did It!
                   </button>
+                ) : (
+                  <span className="px-3 py-1.5 rounded-xl bg-amber-100 text-amber-800 text-xs font-bold whitespace-nowrap">
+                    Open Chore
+                  </span>
                 )}
               </div>
             ))}

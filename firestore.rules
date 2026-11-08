@@ -34,16 +34,6 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/kids/$(kidId)).data.public == true;
       }
 
-      function kidAllowsSubaccountTransfers() {
-        return get(/databases/$(database)/documents/kids/$(kidId)).data.public == true &&
-               get(/databases/$(database)/documents/kids/$(kidId)).data.allowKidSubaccountTransfers != false;
-      }
-
-      function kidAllowsChoreCheckoff() {
-        return get(/databases/$(database)/documents/kids/$(kidId)).data.public == true &&
-               get(/databases/$(database)/documents/kids/$(kidId)).data.allowKidChoreCheckoff != false;
-      }
-
       // Allow listing kids for authenticated users
       allow list: if request.auth != null;
 
@@ -60,33 +50,22 @@ service cloud.firestore {
       // Allow deletion only if user is the owner
       allow delete: if request.auth != null && isOwner();
 
-      // Transactions subcollection (strictly parent/shared access for writes)
+      // Transactions subcollection (strictly authenticated parent/shared access for writes)
       match /transactions/{transactionId} {
         allow read: if kidIsPublic() || kidHasAccess();
         allow write: if kidHasAccess();
       }
 
-      // Goals / Sub-Accounts subcollection
+      // Goals / Sub-Accounts subcollection (strictly authenticated parent/shared access for writes)
       match /goals/{goalId} {
         allow read: if kidIsPublic() || kidHasAccess();
-        allow create, update: if kidHasAccess() || (
-          kidAllowsSubaccountTransfers() &&
-          request.resource.data.currentAmount is number &&
-          request.resource.data.currentAmount >= 0
-        );
-        allow delete: if kidHasAccess();
+        allow write: if kidHasAccess();
       }
 
-      // Chores & Bounties subcollection
+      // Chores & Bounties subcollection (strictly authenticated parent/shared access for writes)
       match /chores/{choreId} {
         allow read: if kidIsPublic() || kidHasAccess();
-        allow create, delete: if kidHasAccess();
-        allow update: if kidHasAccess() || (
-          kidAllowsChoreCheckoff() &&
-          request.resource.data.reward == resource.data.reward &&
-          request.resource.data.title == resource.data.title &&
-          request.resource.data.status in ['open', 'pending_approval']
-        );
+        allow write: if kidHasAccess();
       }
     }
   }

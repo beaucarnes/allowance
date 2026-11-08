@@ -60,10 +60,11 @@ export default async function KidPage({ params }: { params: { slug: string } }) 
   }
 
   const user = await verifySession()
-  const hasAccess =
+  const hasAccess = Boolean(
     user &&
-    (kid.parentId === user.uid ||
-      (Array.isArray(kid.sharedWith) && kid.sharedWith.includes(user.email)))
+      (kid.parentId === user.uid ||
+        (Array.isArray(kid.sharedWith) && kid.sharedWith.includes(user.email)))
+  )
 
   if (!kid.public && !hasAccess) {
     redirect('/access-denied')
@@ -88,15 +89,15 @@ export default async function KidPage({ params }: { params: { slug: string } }) 
         )}
       </div>
 
-      {/* Balances, Checking & Sub-Accounts / Savings Goals */}
+      {/* Balances, Checking & Sub-Accounts / Savings Goals (strictly read-only unless authenticated with access) */}
       <KidsSubAccountsView
         kidId={kid.id}
         kidName={kid.name}
-        allowTransfers={kid.allowKidSubaccountTransfers !== false}
+        allowTransfers={Boolean(hasAccess && kid.allowKidSubaccountTransfers !== false)}
       />
 
       {/* Chores & Bounties + Compound Interest Time Machine */}
-      <KidsBankTools kidId={kid.id} kidName={kid.name} />
+      <KidsBankTools kidId={kid.id} kidName={kid.name} canEdit={hasAccess} />
 
       {/* Transaction History */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
