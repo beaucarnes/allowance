@@ -9,7 +9,7 @@ const OWNER = 'BeauOwnerUid123456'
 const EMAIL = 'ledger-admin@example.com'
 const PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----\n${'B'.repeat(140)}\n-----END PRIVATE KEY-----`
 
-function env(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+function env(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.ProcessEnv {
   return {
     ALLOWANCE_BOT_TOKEN: TOKEN,
     ALLOWANCE_OWNER_UID: OWNER,
@@ -17,7 +17,7 @@ function env(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
     FIREBASE_CLIENT_EMAIL: EMAIL,
     FIREBASE_PRIVATE_KEY: PRIVATE_KEY,
     ...overrides,
-  }
+  } as NodeJS.ProcessEnv
 }
 
 function deps(overrides: Partial<HandlerDeps> = {}): { deps: HandlerDeps; logs: LogEvent[]; ledgerCalls: number } {
@@ -50,7 +50,7 @@ function authed(path: string, init: RequestInit = {}) {
 
 describe('health', () => {
   it('rejects missing configuration and bad credentials without a ledger read', async () => {
-    const closed = deps({ env: {} })
+    const closed = deps({ env: {} as NodeJS.ProcessEnv })
     const missing = await handleHealth(authed('/api/allowance/health'), closed.deps)
     assert.equal(missing.status, 503)
     assert.deepEqual(await missing.json(), { error: 'not_configured' })
@@ -111,7 +111,7 @@ describe('entries http', () => {
     }
     assert.equal(db.ledgerCalls, 0)
 
-    const unconfigured = deps({ env: { ALLOWANCE_BOT_TOKEN: TOKEN } })
+    const unconfigured = deps({ env: { ALLOWANCE_BOT_TOKEN: TOKEN } as unknown as NodeJS.ProcessEnv })
     const blocked = await handleEntry(authed('/api/allowance/entries', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'idempotency-key': 'validation-key-0002' },

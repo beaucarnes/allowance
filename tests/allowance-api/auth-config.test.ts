@@ -16,7 +16,7 @@ const OWNER = 'BeauOwnerUid123456'
 const EMAIL = 'ledger-admin@example.com'
 const PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----\n${'A'.repeat(120)}\n-----END PRIVATE KEY-----`
 
-function readyEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+function readyEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.ProcessEnv {
   return {
     ALLOWANCE_BOT_TOKEN: TOKEN,
     ALLOWANCE_OWNER_UID: OWNER,
@@ -24,7 +24,7 @@ function readyEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
     FIREBASE_CLIENT_EMAIL: EMAIL,
     FIREBASE_PRIVATE_KEY: PRIVATE_KEY,
     ...overrides,
-  }
+  } as NodeJS.ProcessEnv
 }
 
 describe('bot credential', () => {
@@ -72,7 +72,7 @@ describe('owner and firebase config', () => {
   })
 
   it('names missing configuration and refuses a different Firebase project', () => {
-    const missing = assessWriteConfig({})
+    const missing = assessWriteConfig({} as NodeJS.ProcessEnv)
     assert.equal(missing.writeReady, false)
     assert.deepEqual(missing.missing, [
       'ALLOWANCE_OWNER_UID',
