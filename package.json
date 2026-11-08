@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --import ./tests/resolve-ts.mjs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/allowance-api/*.test.ts"
   },
   "dependencies": {
     "@arcjet/decorate": "^1.0.0-alpha.33",
@@ -29,6 +30,9 @@
     "typescript": "^5.7.2"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "22.x"
+  },
+  "overrides": {
+    "jwa": "2.0.1"
   }
 }
